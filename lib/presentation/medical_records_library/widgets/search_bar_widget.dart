@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:record/record.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:sizer/sizer.dart';
 
 import '../../../core/app_export.dart';
@@ -252,8 +254,20 @@ class _SearchBarWidgetState extends State<SearchBarWidget>
 
       // Start recording
       if (await _audioRecorder.hasPermission()) {
-        await _audioRecorder
-            .start(const RecordConfig(encoder: AudioEncoder.wav, path: ''));
+        if (kIsWeb) {
+          await _audioRecorder.start(
+            const RecordConfig(encoder: AudioEncoder.wav),
+            path: 'voice_input.wav',
+          );
+        } else {
+          final tempDir = await getTemporaryDirectory();
+          final filePath =
+              '${tempDir.path}/voice_input_${DateTime.now().millisecondsSinceEpoch}.wav';
+          await _audioRecorder.start(
+            const RecordConfig(encoder: AudioEncoder.wav),
+            path: filePath,
+          );
+        }
 
         // Show recording feedback
         _showRecordingFeedback();
