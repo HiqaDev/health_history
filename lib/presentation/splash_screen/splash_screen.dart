@@ -4,14 +4,9 @@ import 'package:sizer/sizer.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../core/app_export.dart';
-import '../../theme/app_theme.dart';
-import '../../widgets/custom_icon_widget.dart';
 import './widgets/animated_logo_widget.dart';
 import './widgets/background_gradient_widget.dart';
 import './widgets/loading_indicator_widget.dart';
-import 'widgets/animated_logo_widget.dart';
-import 'widgets/background_gradient_widget.dart';
-import 'widgets/loading_indicator_widget.dart';
 
 /// Splash Screen for Health History app
 /// Provides branded app launch experience while initializing secure health data services

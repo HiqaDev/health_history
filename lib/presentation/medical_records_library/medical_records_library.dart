@@ -1,26 +1,17 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:sizer/sizer.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 
 import '../../core/app_export.dart';
-import '../../theme/app_theme.dart';
 import '../../widgets/custom_app_bar.dart';
 import '../../widgets/custom_bottom_bar.dart';
-import '../../widgets/custom_icon_widget.dart';
 import './widgets/advanced_filter_modal.dart';
 import './widgets/document_card_widget.dart';
 import './widgets/document_upload_fab.dart';
 import './widgets/empty_state_widget.dart';
 import './widgets/filter_chips_widget.dart';
 import './widgets/search_bar_widget.dart';
-import 'widgets/advanced_filter_modal.dart';
-import 'widgets/document_card_widget.dart';
-import 'widgets/document_upload_fab.dart';
-import 'widgets/empty_state_widget.dart';
-import 'widgets/filter_chips_widget.dart';
-import 'widgets/search_bar_widget.dart';
 
 class MedicalRecordsLibrary extends StatefulWidget {
   const MedicalRecordsLibrary({super.key});

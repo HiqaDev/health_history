@@ -22,18 +22,19 @@ dependencies:
   connectivity_plus: ^6.1.4
   dio: ^5.4.0
   fluttertoast: ^8.2.4
-  fl_chart: ^0.65.0
+  fl_chart: ^0.65.0           # For medication adherence tracking charts and data visualization
   smooth_page_indicator: ^1.2.1
-  permission_handler: ^11.1.0
-  camera: ^0.10.5+5
+  permission_handler: ^11.1.0 # For camera and storage permissions
+  camera: ^0.10.5+5           # For real camera integration with document scanning
   image_picker: ^1.0.4
   image_cropper: ^9.1.0
-  record: ^6.0.0
+  record: ^6.0.0              # For real audio recording functionality
   file_picker: ^8.1.7
   path_provider: ^2.1.2
   universal_html: ^2.2.4
   flutter_slidable: ^4.0.1
   syncfusion_flutter_pdfviewer: ^29.1.38
+  supabase_flutter: ^2.10.2   # For Supabase integration
 
 dev_dependencies:
   flutter_test:    # CRITICAL: Required for Flutter project testing - DO NOT REMOVE
@@ -52,3 +53,7 @@ flutter:
   # CRITICAL FONTS RULE: 
   # - THIS PROJECT USES GOOGLE FONTS INSTEAD OF LOCAL FONTS
   # - DO NOT ADD ANY LOCAL FONTS SECTION OR FONT FILES
+
+# Environment Variables Required:
+# - SUPABASE_URL: Your Supabase project URL
+# - SUPABASE_ANON_KEY: Your Supabase anonymous key

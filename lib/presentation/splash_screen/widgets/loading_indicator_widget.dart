@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-import '../../../core/app_export.dart';
 
 /// Loading indicator widget with progress animation
 class LoadingIndicatorWidget extends StatefulWidget {

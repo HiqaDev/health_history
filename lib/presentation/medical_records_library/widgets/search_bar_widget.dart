@@ -43,13 +43,9 @@ class _SearchBarWidgetState extends State<SearchBarWidget>
       duration: const Duration(milliseconds: 200),
       vsync: this,
     );
-    _scaleAnimation = Tween<double>(
-      begin: 1.0,
-      end: 0.95,
-    ).animate(CurvedAnimation(
-      parent: _animationController,
-      curve: Curves.easeInOut,
-    ));
+    _scaleAnimation = Tween<double>(begin: 1.0, end: 0.95).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
+    );
   }
 
   @override
@@ -125,8 +121,9 @@ class _SearchBarWidgetState extends State<SearchBarWidget>
                             padding: EdgeInsets.all(2.w),
                             child: CustomIconWidget(
                               iconName: 'clear',
-                              color:
-                                  colorScheme.onSurface.withValues(alpha: 0.6),
+                              color: colorScheme.onSurface.withValues(
+                                alpha: 0.6,
+                              ),
                               size: 18,
                             ),
                           ),
@@ -141,17 +138,22 @@ class _SearchBarWidgetState extends State<SearchBarWidget>
                             margin: EdgeInsets.only(right: 2.w),
                             padding: EdgeInsets.all(2.w),
                             decoration: BoxDecoration(
-                              color: _isRecording
-                                  ? AppTheme.errorLight.withValues(alpha: 0.1)
-                                  : Colors.transparent,
+                              color:
+                                  _isRecording
+                                      ? AppTheme.errorLight.withValues(
+                                        alpha: 0.1,
+                                      )
+                                      : Colors.transparent,
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: CustomIconWidget(
                               iconName: _isRecording ? 'mic' : 'mic_none',
-                              color: _isRecording
-                                  ? AppTheme.errorLight
-                                  : colorScheme.onSurface
-                                      .withValues(alpha: 0.6),
+                              color:
+                                  _isRecording
+                                      ? AppTheme.errorLight
+                                      : colorScheme.onSurface.withValues(
+                                        alpha: 0.6,
+                                      ),
                               size: 20,
                             ),
                           ),
@@ -174,14 +176,16 @@ class _SearchBarWidgetState extends State<SearchBarWidget>
             child: Container(
               padding: EdgeInsets.all(3.w),
               decoration: BoxDecoration(
-                color: widget.filterCount > 0
-                    ? colorScheme.primary
-                    : colorScheme.surface,
+                color:
+                    widget.filterCount > 0
+                        ? colorScheme.primary
+                        : colorScheme.surface,
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: widget.filterCount > 0
-                      ? colorScheme.primary
-                      : colorScheme.outline.withValues(alpha: 0.2),
+                  color:
+                      widget.filterCount > 0
+                          ? colorScheme.primary
+                          : colorScheme.outline.withValues(alpha: 0.2),
                 ),
                 boxShadow: [
                   BoxShadow(
@@ -195,9 +199,10 @@ class _SearchBarWidgetState extends State<SearchBarWidget>
                 children: [
                   CustomIconWidget(
                     iconName: 'tune',
-                    color: widget.filterCount > 0
-                        ? Colors.white
-                        : colorScheme.onSurface.withValues(alpha: 0.6),
+                    color:
+                        widget.filterCount > 0
+                            ? Colors.white
+                            : colorScheme.onSurface.withValues(alpha: 0.6),
                     size: 20,
                   ),
                   if (widget.filterCount > 0)
@@ -252,8 +257,10 @@ class _SearchBarWidgetState extends State<SearchBarWidget>
 
       // Start recording
       if (await _audioRecorder.hasPermission()) {
-        await _audioRecorder
-            .start(const RecordConfig(encoder: AudioEncoder.wav, path: ''));
+        await _audioRecorder.start(
+          const RecordConfig(encoder: AudioEncoder.wav),
+          path: '',
+        );
 
         // Show recording feedback
         _showRecordingFeedback();
@@ -319,11 +326,7 @@ class _SearchBarWidgetState extends State<SearchBarWidget>
       SnackBar(
         content: Row(
           children: [
-            CustomIconWidget(
-              iconName: 'mic',
-              color: Colors.white,
-              size: 16,
-            ),
+            CustomIconWidget(iconName: 'mic', color: Colors.white, size: 16),
             SizedBox(width: 2.w),
             const Text('Listening... Release to search'),
           ],
@@ -338,8 +341,9 @@ class _SearchBarWidgetState extends State<SearchBarWidget>
   void _showPermissionDeniedMessage() {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content:
-            const Text('Microphone permission is required for voice search'),
+        content: const Text(
+          'Microphone permission is required for voice search',
+        ),
         backgroundColor: AppTheme.errorLight,
         action: SnackBarAction(
           label: 'Settings',
@@ -352,10 +356,7 @@ class _SearchBarWidgetState extends State<SearchBarWidget>
 
   void _showErrorMessage(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: AppTheme.errorLight,
-      ),
+      SnackBar(content: Text(message), backgroundColor: AppTheme.errorLight),
     );
   }
 }
