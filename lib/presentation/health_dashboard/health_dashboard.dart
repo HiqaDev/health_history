@@ -436,12 +436,9 @@ class _HealthDashboardState extends State<HealthDashboard>
           ),
           SizedBox(height: 3.h),
           ElevatedButton(
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Reminders feature coming soon')),
-              );
-            },
-            child: const Text('Set Reminders'),
+            onPressed: () =>
+                Navigator.pushNamed(context, '/smart-reminders'),
+            child: const Text('Manage Reminders'),
           ),
         ],
       ),

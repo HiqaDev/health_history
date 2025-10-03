@@ -5,6 +5,13 @@ import '../../core/app_export.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/custom_app_bar.dart';
 import '../../widgets/custom_bottom_bar.dart';
+import '../../services/timeline_service.dart';
+import '../../services/auth_service.dart';
+import './widgets/add_event_fab.dart';
+import './widgets/health_trends_chart.dart';
+import './widgets/timeline_event_card.dart';
+import './widgets/timeline_filter_bar.dart';
+import './widgets/year_marker_widget.dart';
 import './widgets/add_event_fab.dart';
 import './widgets/health_trends_chart.dart';
 import './widgets/timeline_event_card.dart';
@@ -20,10 +27,13 @@ class HealthTimeline extends StatefulWidget {
 
 class _HealthTimelineState extends State<HealthTimeline>
     with SingleTickerProviderStateMixin {
+  final _timelineService = TimelineService();
+  final _authService = AuthService();
+  
   late ScrollController _scrollController;
   late AnimationController _animationController;
 
-  bool _isLoading = false;
+  bool _isLoading = true;
   String _selectedFilter = 'All';
   DateTimeRange? _selectedDateRange;
   String _selectedProvider = 'All Providers';
@@ -31,119 +41,14 @@ class _HealthTimelineState extends State<HealthTimeline>
   bool _showChart = false;
   List<String> _selectedEventTypes = [];
 
-  final List<String> _eventTypes = [
-    'All',
-    'Appointments',
-    'Medications',
-    'Lab Results',
-    'Procedures',
-    'Symptoms',
-    'Vaccinations'
-  ];
-
-  final List<String> _providers = [
-    'All Providers',
-    'Dr. Smith (Cardiology)',
-    'Dr. Johnson (General)',
-    'City Hospital',
-    'MediLab Testing',
-    'Pharmacy Plus'
-  ];
-
-  List<Map<String, dynamic>> _timelineEvents = [
-    {
-      'id': '1',
-      'title': 'Annual Checkup',
-      'subtitle': 'Dr. Smith - Cardiology',
-      'date': DateTime.now().subtract(const Duration(days: 7)),
-      'type': 'Appointments',
-      'description':
-          'Routine annual health examination. Blood pressure, heart rate, and general health assessment completed.',
-      'attachments': ['ECG_Report.pdf', 'Blood_Test_Results.pdf'],
-      'icon': Icons.medical_services,
-      'color': AppTheme.primaryLight,
-      'hasDocuments': true,
-      'notes':
-          'Patient shows excellent cardiovascular health. Continue current exercise routine.',
-    },
-    {
-      'id': '2',
-      'title': 'Blood Pressure Medication',
-      'subtitle': 'Lisinopril 10mg - Daily',
-      'date': DateTime.now().subtract(const Duration(days: 14)),
-      'type': 'Medications',
-      'description':
-          'Started new blood pressure medication as prescribed by Dr. Smith.',
-      'attachments': ['Prescription_Lisinopril.pdf'],
-      'icon': Icons.medication,
-      'color': AppTheme.successLight,
-      'hasDocuments': true,
-      'notes':
-          'Take once daily in the morning with food. Monitor for dizziness.',
-    },
-    {
-      'id': '3',
-      'title': 'Blood Panel Results',
-      'subtitle': 'MediLab Testing',
-      'date': DateTime.now().subtract(const Duration(days: 21)),
-      'type': 'Lab Results',
-      'description':
-          'Comprehensive metabolic panel and lipid profile completed.',
-      'attachments': ['Lab_Results_March2024.pdf', 'Reference_Ranges.pdf'],
-      'icon': Icons.science,
-      'color': AppTheme.warningLight,
-      'hasDocuments': true,
-      'notes':
-          'Cholesterol levels slightly elevated. Discuss dietary changes at next visit.',
-    },
-    {
-      'id': '4',
-      'title': 'Cardiac Catheterization',
-      'subtitle': 'City Hospital - Interventional Cardiology',
-      'date': DateTime.now().subtract(const Duration(days: 45)),
-      'type': 'Procedures',
-      'description':
-          'Diagnostic cardiac catheterization to evaluate coronary arteries.',
-      'attachments': [
-        'Catheterization_Report.pdf',
-        'Post_Procedure_Instructions.pdf'
-      ],
-      'icon': Icons.healing,
-      'color': AppTheme.accentLight,
-      'hasDocuments': true,
-      'notes':
-          'No significant blockages found. Excellent coronary artery health.',
-    },
-    {
-      'id': '5',
-      'title': 'Chest Discomfort',
-      'subtitle': 'Self-Reported Symptom',
-      'date': DateTime.now().subtract(const Duration(days: 52)),
-      'type': 'Symptoms',
-      'description':
-          'Mild chest discomfort during physical activity. Led to cardiology referral.',
-      'attachments': [],
-      'icon': Icons.warning,
-      'color': AppTheme.errorLight,
-      'hasDocuments': false,
-      'notes':
-          'Resolved after cardiac evaluation. Likely muscle strain from exercise.',
-    },
-    {
-      'id': '6',
-      'title': 'COVID-19 Booster',
-      'subtitle': 'Pharmacy Plus - Vaccination',
-      'date': DateTime.now().subtract(const Duration(days: 120)),
-      'type': 'Vaccinations',
-      'description':
-          'COVID-19 booster vaccination (Pfizer-BioNTech) administered.',
-      'attachments': ['Vaccination_Record.pdf'],
-      'icon': Icons.vaccines,
-      'color': AppTheme.secondaryLight,
-      'hasDocuments': true,
-      'notes': 'No adverse reactions reported. Next booster due in 6 months.',
-    },
-  ];
+  // Real timeline data
+  List<Map<String, dynamic>> _allTimelineEvents = [];
+  List<Map<String, dynamic>> _filteredEvents = [];
+  Map<String, dynamic>? _statistics;
+  
+  // Dynamic filters based on actual data
+  List<String> _eventTypes = ['All'];
+  List<String> _providers = ['All Providers'];
 
   @override
   void initState() {
@@ -153,6 +58,87 @@ class _HealthTimelineState extends State<HealthTimeline>
       duration: const Duration(milliseconds: 300),
       vsync: this,
     );
+    _loadTimelineData();
+  }
+
+  Future<void> _loadTimelineData() async {
+    try {
+      setState(() => _isLoading = true);
+      
+      if (!_authService.isAuthenticated) return;
+      
+      final userId = _authService.currentUser!.id;
+      
+      // Load timeline data and statistics in parallel
+      final results = await Future.wait([
+        _timelineService.getCompleteTimeline(userId),
+        _timelineService.getTimelineStatistics(userId),
+      ]);
+      
+      final timelineEvents = results[0] as List<Map<String, dynamic>>;
+      final statistics = results[1] as Map<String, dynamic>;
+      
+      // Extract unique event types and providers for filters
+      Set<String> eventTypes = {'All'};
+      Set<String> providers = {'All Providers'};
+      
+      for (final event in timelineEvents) {
+        if (event['event_type'] != null) {
+          eventTypes.add(_formatEventType(event['event_type']));
+        }
+        if (event['doctor_name'] != null) {
+          providers.add(event['doctor_name']);
+        }
+        if (event['hospital_name'] != null) {
+          providers.add(event['hospital_name']);
+        }
+      }
+      
+      setState(() {
+        _allTimelineEvents = timelineEvents;
+        _filteredEvents = timelineEvents;
+        _statistics = statistics;
+        _eventTypes = eventTypes.toList();
+        _providers = providers.toList();
+        _isLoading = false;
+      });
+    } catch (error) {
+      setState(() => _isLoading = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error loading timeline: $error')),
+        );
+      }
+    }
+  }
+
+  String _formatEventType(String eventType) {
+    switch (eventType) {
+      case 'diagnosis':
+        return 'Diagnosis';
+      case 'treatment':
+        return 'Treatment';
+      case 'surgery':
+        return 'Surgery';
+      case 'test':
+        return 'Tests';
+      case 'vaccination':
+        return 'Vaccinations';
+      case 'hospital_visit':
+        return 'Hospital Visit';
+      case 'prescription':
+        return 'Prescriptions';
+      case 'symptom':
+        return 'Symptoms';
+      case 'appointment':
+        return 'Appointments';
+      case 'medication_start':
+        return 'Medications';
+      case 'health_metric':
+        return 'Health Metrics';
+      default:
+        return eventType.replaceAll('_', ' ').toUpperCase();
+    }
   }
 
   @override
@@ -162,40 +148,51 @@ class _HealthTimelineState extends State<HealthTimeline>
     super.dispose();
   }
 
-  List<Map<String, dynamic>> get _filteredEvents {
-    return _timelineEvents.where((event) {
-      // Filter by type
-      if (_selectedFilter != 'All' && event['type'] != _selectedFilter) {
-        return false;
-      }
-
-      // Filter by date range
-      if (_selectedDateRange != null) {
-        final eventDate = event['date'] as DateTime;
-        if (eventDate.isBefore(_selectedDateRange!.start) ||
-            eventDate.isAfter(_selectedDateRange!.end)) {
+  void _applyFilters() {
+    setState(() {
+      _filteredEvents = _allTimelineEvents.where((event) {
+        // Filter by type
+        final eventTypeFormatted = _formatEventType(event['event_type'] ?? '');
+        if (_selectedFilter != 'All' && eventTypeFormatted != _selectedFilter) {
           return false;
         }
-      }
 
-      // Filter by search query
-      if (_searchQuery.isNotEmpty) {
-        final title = (event['title'] as String).toLowerCase();
-        final subtitle = (event['subtitle'] as String).toLowerCase();
-        final description = (event['description'] as String).toLowerCase();
-        final query = _searchQuery.toLowerCase();
-
-        if (!title.contains(query) &&
-            !subtitle.contains(query) &&
-            !description.contains(query)) {
-          return false;
+        // Filter by date range
+        if (_selectedDateRange != null) {
+          final eventDate = event['date'] as DateTime;
+          if (eventDate.isBefore(_selectedDateRange!.start) ||
+              eventDate.isAfter(_selectedDateRange!.end)) {
+            return false;
+          }
         }
-      }
 
-      return true;
-    }).toList()
-      ..sort(
-          (a, b) => (b['date'] as DateTime).compareTo(a['date'] as DateTime));
+        // Filter by provider
+        if (_selectedProvider != 'All Providers') {
+          final doctorName = event['doctor_name'] as String?;
+          final hospitalName = event['hospital_name'] as String?;
+          if (doctorName != _selectedProvider && hospitalName != _selectedProvider) {
+            return false;
+          }
+        }
+
+        // Filter by search query
+        if (_searchQuery.isNotEmpty) {
+          final title = (event['title'] as String? ?? '').toLowerCase();
+          final description = (event['description'] as String? ?? '').toLowerCase();
+          final tags = (event['tags'] as List<String>? ?? []).join(' ').toLowerCase();
+          final query = _searchQuery.toLowerCase();
+
+          if (!title.contains(query) &&
+              !description.contains(query) &&
+              !tags.contains(query)) {
+            return false;
+          }
+        }
+
+        return true;
+      }).toList()
+        ..sort((a, b) => (b['date'] as DateTime).compareTo(a['date'] as DateTime));
+    });
   }
 
   @override
@@ -228,13 +225,22 @@ class _HealthTimelineState extends State<HealthTimeline>
             searchQuery: _searchQuery,
             eventTypes: _eventTypes,
             providers: _providers,
-            onFilterChanged: (filter) =>
-                setState(() => _selectedFilter = filter),
-            onDateRangeChanged: (range) =>
-                setState(() => _selectedDateRange = range),
-            onProviderChanged: (provider) =>
-                setState(() => _selectedProvider = provider),
-            onSearchChanged: (query) => setState(() => _searchQuery = query),
+            onFilterChanged: (filter) {
+              setState(() => _selectedFilter = filter);
+              _applyFilters();
+            },
+            onDateRangeChanged: (range) {
+              setState(() => _selectedDateRange = range);
+              _applyFilters();
+            },
+            onProviderChanged: (provider) {
+              setState(() => _selectedProvider = provider);
+              _applyFilters();
+            },
+            onSearchChanged: (query) {
+              setState(() => _searchQuery = query);
+              _applyFilters();
+            },
             onClearFilters: _clearAllFilters,
           ),
           if (_showChart)
@@ -359,12 +365,7 @@ class _HealthTimelineState extends State<HealthTimeline>
   }
 
   Future<void> _refreshTimeline() async {
-    setState(() => _isLoading = true);
-
-    // Simulate network delay
-    await Future.delayed(const Duration(seconds: 2));
-
-    setState(() => _isLoading = false);
+    await _loadTimelineData();
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -385,6 +386,7 @@ class _HealthTimelineState extends State<HealthTimeline>
       _searchQuery = '';
       _selectedEventTypes.clear();
     });
+    _applyFilters();
   }
 
   void _showEventDetails(Map<String, dynamic> event) {
@@ -640,7 +642,7 @@ class _HealthTimelineState extends State<HealthTimeline>
             onPressed: () {
               Navigator.pop(context);
               setState(() {
-                _timelineEvents.removeWhere((e) => e['id'] == event['id']);
+                _allTimelineEvents.removeWhere((e) => e['id'] == event['id']);
               });
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(

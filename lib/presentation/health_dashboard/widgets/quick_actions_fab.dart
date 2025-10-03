@@ -405,6 +405,58 @@ class _QuickActionsFabState extends State<QuickActionsFab>
                     child: Opacity(
                       opacity: _expandAnimation.value,
                       child: _buildActionButton(
+                        'QR Code',
+                        'qr_code',
+                        Colors.indigo[600]!,
+                        () => Navigator.pushNamed(context, '/qr-code-generation'),
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: 2.h),
+                  Transform.scale(
+                    scale: _expandAnimation.value,
+                    child: Opacity(
+                      opacity: _expandAnimation.value,
+                      child: _buildActionButton(
+                        'Secure Sharing',
+                        'share',
+                        Colors.blue[600]!,
+                        () => Navigator.pushNamed(context, '/secure-sharing'),
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: 2.h),
+                  Transform.scale(
+                    scale: _expandAnimation.value,
+                    child: Opacity(
+                      opacity: _expandAnimation.value,
+                      child: _buildActionButton(
+                        'Smart Reminders',
+                        'notifications_active',
+                        Colors.purple[600]!,
+                        () => Navigator.pushNamed(context, '/smart-reminders'),
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: 2.h),
+                  Transform.scale(
+                    scale: _expandAnimation.value,
+                    child: Opacity(
+                      opacity: _expandAnimation.value,
+                      child: _buildActionButton(
+                        'Doctor Notes',
+                        'medical_information',
+                        Colors.green[600]!,
+                        () => Navigator.pushNamed(context, '/doctor-notes'),
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: 2.h),
+                  Transform.scale(
+                    scale: _expandAnimation.value,
+                    child: Opacity(
+                      opacity: _expandAnimation.value,
+                      child: _buildActionButton(
                         'Voice Note',
                         _isRecording ? 'stop' : 'mic',
                         _isRecording

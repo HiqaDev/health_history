@@ -6,6 +6,8 @@ import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 import '../../core/app_export.dart';
 import '../../widgets/custom_app_bar.dart';
 import '../../widgets/custom_bottom_bar.dart';
+import '../../services/medical_records_service.dart';
+import '../../services/auth_service.dart';
 import './widgets/advanced_filter_modal.dart';
 import './widgets/document_card_widget.dart';
 import './widgets/document_upload_fab.dart';
@@ -22,6 +24,9 @@ class MedicalRecordsLibrary extends StatefulWidget {
 
 class _MedicalRecordsLibraryState extends State<MedicalRecordsLibrary>
     with TickerProviderStateMixin {
+  final _medicalRecordsService = MedicalRecordsService();
+  final _authService = AuthService();
+  
   late ScrollController _scrollController;
   late AnimationController _fabAnimationController;
 
@@ -31,109 +36,12 @@ class _MedicalRecordsLibraryState extends State<MedicalRecordsLibrary>
   bool _isMultiSelectMode = false;
   Set<String> _selectedDocuments = {};
   bool _isFabVisible = true;
+  bool _isLoading = true;
 
-  // Mock data for medical documents
-  final List<Map<String, dynamic>> _allDocuments = [
-    {
-      'id': '1',
-      'title': 'Blood Test Results - Complete Blood Count',
-      'type': 'Lab Report',
-      'date': '2025-01-05T10:30:00.000Z',
-      'provider': 'City General Hospital',
-      'size': 2048576,
-      'thumbnailUrl':
-          'https://images.pexels.com/photos/4386467/pexels-photo-4386467.jpeg?auto=compress&cs=tinysrgb&w=400',
-      'isFavorite': true,
-      'tags': ['Blood Work', 'Routine', 'Annual Checkup'],
-      'syncStatus': 'synced',
-      'fileUrl':
-          'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
-    },
-    {
-      'id': '2',
-      'title': 'Prescription - Hypertension Medication',
-      'type': 'Prescription',
-      'date': '2025-01-03T14:15:00.000Z',
-      'provider': 'Dr. Sarah Johnson',
-      'size': 512000,
-      'isFavorite': false,
-      'tags': ['Hypertension', 'Daily Medication'],
-      'syncStatus': 'synced',
-      'fileUrl':
-          'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
-    },
-    {
-      'id': '3',
-      'title': 'Chest X-Ray Report',
-      'type': 'Imaging',
-      'date': '2024-12-28T09:00:00.000Z',
-      'provider': 'Metro Medical Center',
-      'size': 8192000,
-      'thumbnailUrl':
-          'https://images.pexels.com/photos/7089020/pexels-photo-7089020.jpeg?auto=compress&cs=tinysrgb&w=400',
-      'isFavorite': false,
-      'tags': ['Chest', 'Routine Screening'],
-      'syncStatus': 'syncing',
-      'fileUrl':
-          'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
-    },
-    {
-      'id': '4',
-      'title': 'Hospital Bill - Emergency Visit',
-      'type': 'Bill',
-      'date': '2024-12-20T16:45:00.000Z',
-      'provider': 'Emergency Care Center',
-      'size': 1024000,
-      'isFavorite': false,
-      'tags': ['Emergency', 'Insurance Claim'],
-      'syncStatus': 'offline',
-      'fileUrl':
-          'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
-    },
-    {
-      'id': '5',
-      'title': 'COVID-19 Vaccination Certificate',
-      'type': 'Vaccination',
-      'date': '2024-12-15T11:30:00.000Z',
-      'provider': 'HealthCare Plus Clinic',
-      'size': 256000,
-      'isFavorite': true,
-      'tags': ['COVID-19', 'Vaccination', 'Certificate'],
-      'syncStatus': 'synced',
-      'fileUrl':
-          'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
-    },
-    {
-      'id': '6',
-      'title': 'MRI Scan - Brain',
-      'type': 'Imaging',
-      'date': '2024-12-10T13:20:00.000Z',
-      'provider': 'Advanced Diagnostics Lab',
-      'size': 15728640,
-      'thumbnailUrl':
-          'https://images.pexels.com/photos/7089020/pexels-photo-7089020.jpeg?auto=compress&cs=tinysrgb&w=400',
-      'isFavorite': false,
-      'tags': ['Brain', 'MRI', 'Neurological'],
-      'syncStatus': 'error',
-      'fileUrl':
-          'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
-    },
-    {
-      'id': '7',
-      'title': 'Insurance Claim Form',
-      'type': 'Insurance',
-      'date': '2024-12-05T10:00:00.000Z',
-      'provider': 'Wellness Medical Group',
-      'size': 768000,
-      'isFavorite': false,
-      'tags': ['Insurance', 'Claim', 'Reimbursement'],
-      'syncStatus': 'synced',
-      'fileUrl':
-          'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
-    },
-  ];
-
+  // Real data from database
+  List<Map<String, dynamic>> _allDocuments = [];
   List<Map<String, dynamic>> _filteredDocuments = [];
+  Map<String, dynamic>? _statistics;
 
   @override
   void initState() {
@@ -144,8 +52,38 @@ class _MedicalRecordsLibraryState extends State<MedicalRecordsLibrary>
       vsync: this,
     );
 
-    _filteredDocuments = List.from(_allDocuments);
+    _loadDocuments();
     _scrollController.addListener(_onScroll);
+  }
+
+  Future<void> _loadDocuments() async {
+    try {
+      setState(() => _isLoading = true);
+      
+      if (!_authService.isAuthenticated) return;
+      
+      final userId = _authService.currentUser!.id;
+      
+      // Load documents and statistics in parallel
+      final results = await Future.wait([
+        _medicalRecordsService.getDocumentsByCategory(userId: userId),
+        _medicalRecordsService.getDocumentStatistics(userId),
+      ]);
+      
+      setState(() {
+        _allDocuments = results[0] as List<Map<String, dynamic>>;
+        _statistics = results[1] as Map<String, dynamic>;
+        _filteredDocuments = List.from(_allDocuments);
+        _isLoading = false;
+      });
+    } catch (error) {
+      setState(() => _isLoading = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error loading documents: $error')),
+        );
+      }
+    }
   }
 
   @override
@@ -194,9 +132,30 @@ class _MedicalRecordsLibraryState extends State<MedicalRecordsLibrary>
           ),
           if (_isMultiSelectMode) _buildMultiSelectHeader(context),
           Expanded(
-            child: _filteredDocuments.isEmpty
-                ? _buildEmptyState(context)
-                : _buildDocumentsList(context),
+            child: _isLoading
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        CircularProgressIndicator(
+                          color: AppTheme.accentLight,
+                        ),
+                        SizedBox(height: 2.h),
+                        Text(
+                          'Loading your medical records...',
+                          style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
+                            color: AppTheme.lightTheme.colorScheme.onSurface.withOpacity(0.7),
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                : _filteredDocuments.isEmpty
+                    ? _buildEmptyState(context)
+                    : RefreshIndicator(
+                        onRefresh: _loadDocuments,
+                        child: _buildDocumentsList(context),
+                      ),
           ),
         ],
       ),
@@ -628,10 +587,16 @@ class _MedicalRecordsLibraryState extends State<MedicalRecordsLibrary>
   }
 
   void _onDocumentUploaded(Map<String, dynamic> document) {
-    setState(() {
-      _allDocuments.insert(0, document);
-      _applyFilters();
-    });
+    // Reload documents from database to ensure consistency
+    _loadDocuments();
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Document "${document['title']}" uploaded successfully'),
+        backgroundColor: AppTheme.successLight,
+        duration: const Duration(seconds: 3),
+      ),
+    );
   }
 }
 

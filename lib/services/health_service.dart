@@ -449,7 +449,7 @@ class HealthService {
       await _client
           .from('qr_codes')
           .update({
-            'view_count': SupabaseQueryBuilder.raw('view_count + 1'),
+            'view_count': 'view_count + 1',
             'last_accessed_at': DateTime.now().toIso8601String()
           })
           .eq('access_code', accessCode);
@@ -635,7 +635,7 @@ class HealthService {
       await _client
           .from('secure_shares')
           .update({
-            'current_access_count': SupabaseQueryBuilder.raw('current_access_count + 1'),
+            'current_access_count': 'current_access_count + 1',
           })
           .eq('access_code', accessCode);
 

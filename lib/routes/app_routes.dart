@@ -9,7 +9,10 @@ import '../presentation/document_scanner/document_scanner.dart';
 import '../presentation/medication_reminders/medication_reminders.dart';
 import '../presentation/health_timeline/health_timeline.dart';
 import '../presentation/emergency_access/emergency_access.dart';
-import '../presentation/secure_sharing/secure_sharing.dart';
+import '../presentation/secure_sharing/secure_sharing_screen.dart';
+// import '../presentation/doctor_notes/doctor_notes_screen.dart';
+import '../presentation/smart_reminders/smart_reminders_screen.dart';
+import '../presentation/qr_code_generation/qr_code_generation_screen.dart';
 import '../presentation/user_profile_settings/user_profile_settings.dart';
 
 class AppRoutes {
@@ -26,6 +29,9 @@ class AppRoutes {
   static const String emergencyAccess = '/emergency-access';
   static const String secureSharing = '/secure-sharing';
   static const String userProfileSettings = '/user-profile-settings';
+  static const String doctorNotes = '/doctor-notes';
+  static const String smartReminders = '/smart-reminders';
+  static const String qrCodeGeneration = '/qr-code-generation';
 
   static Map<String, WidgetBuilder> routes = {
     initial: (context) => const SplashScreen(),
@@ -39,7 +45,10 @@ class AppRoutes {
     medicationReminders: (context) => const MedicationReminders(),
     healthTimeline: (context) => const HealthTimeline(),
     emergencyAccess: (context) => const EmergencyAccess(),
-    secureSharing: (context) => const SecureSharing(),
+    secureSharing: (context) => const SecureSharingScreen(),
     userProfileSettings: (context) => const UserProfileSettings(),
+    // doctorNotes: (context) => const DoctorNotesScreen(),
+    smartReminders: (context) => const SmartRemindersScreen(),
+    qrCodeGeneration: (context) => const QRCodeGenerationScreen(),
   };
 }
