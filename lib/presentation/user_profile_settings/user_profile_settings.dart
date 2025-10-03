@@ -63,7 +63,9 @@ class _UserProfileSettingsState extends State<UserProfileSettings> {
         _emailController.text = profile['email'] ?? '';
         _phoneController.text = profile['phone'] ?? '';
         _addressController.text = profile['address'] ?? '';
-        _emergencyContactController.text = profile['emergency_contact'] ?? '';
+        // Handle emergency contact - try multiple field names for compatibility
+        _emergencyContactController.text = profile['emergency_contact'] ?? 
+                                         profile['emergency_contact_name'] ?? '';
         _allergiesController.text = profile['allergies'] ?? '';
         _medicationsController.text = profile['medications'] ?? '';
         _medicalConditionsController.text = profile['medical_conditions'] ?? '';
@@ -71,12 +73,18 @@ class _UserProfileSettingsState extends State<UserProfileSettings> {
         _selectedGender = profile['gender'] ?? 'Not specified';
 
         if (profile['date_of_birth'] != null) {
-          _selectedDateOfBirth = DateTime.parse(profile['date_of_birth']);
+          try {
+            _selectedDateOfBirth = DateTime.parse(profile['date_of_birth']);
+          } catch (dateError) {
+            print('Error parsing date: $dateError');
+            _selectedDateOfBirth = null;
+          }
         }
       }
 
       setState(() => _isLoading = false);
     } catch (e) {
+      print('Error loading profile: $e');
       setState(() => _isLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error loading profile: $e')),
@@ -101,20 +109,33 @@ class _UserProfileSettingsState extends State<UserProfileSettings> {
         'blood_group':
             _selectedBloodGroup == 'Not specified' ? null : _selectedBloodGroup,
         'gender': _selectedGender == 'Not specified' ? null : _selectedGender,
-        'date_of_birth': _selectedDateOfBirth?.toIso8601String(),
+        'date_of_birth': _selectedDateOfBirth?.toIso8601String().split('T')[0], // Keep only date part
         'updated_at': DateTime.now().toIso8601String(),
       };
+
+      // Remove null or empty values to avoid unnecessary updates
+      profileData.removeWhere((key, value) => 
+          value == null || (value is String && value.isEmpty));
+
+      print('Saving profile data: $profileData'); // Debug log
 
       await _authService.updateUserProfile(profileData);
 
       setState(() => _isSaving = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Profile updated successfully')),
+        const SnackBar(
+          content: Text('Profile updated successfully'),
+          backgroundColor: Colors.green,
+        ),
       );
     } catch (e) {
+      print('Error saving profile: $e'); // Debug log
       setState(() => _isSaving = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error saving profile: $e')),
+        SnackBar(
+          content: Text('Error saving profile: $e'),
+          backgroundColor: Colors.red,
+        ),
       );
     }
   }

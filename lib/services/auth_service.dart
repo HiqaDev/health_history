@@ -86,10 +86,14 @@ class AuthService {
           .from('user_profiles')
           .select()
           .eq('id', currentUser!.id)
-          .single();
+          .maybeSingle();
 
       return response;
+    } on PostgrestException catch (error) {
+      print('Supabase error getting profile: ${error.message}');
+      throw Exception('Failed to fetch user profile: ${error.message}');
     } catch (error) {
+      print('General error getting profile: $error');
       throw Exception('Failed to fetch user profile: $error');
     }
   }
@@ -100,15 +104,44 @@ class AuthService {
     if (!isAuthenticated) throw Exception('User not authenticated');
 
     try {
-      final response = await _client
+      // First check if profile exists
+      final existingProfile = await _client
           .from('user_profiles')
-          .update(updates)
+          .select('id')
           .eq('id', currentUser!.id)
-          .select()
-          .single();
+          .maybeSingle();
 
-      return response;
+      if (existingProfile == null) {
+        // Create new profile if it doesn't exist
+        updates['id'] = currentUser!.id;
+        updates['email'] = currentUser!.email;
+        updates['created_at'] = DateTime.now().toIso8601String();
+        
+        final response = await _client
+            .from('user_profiles')
+            .insert(updates)
+            .select()
+            .single();
+
+        return response;
+      } else {
+        // Update existing profile
+        final response = await _client
+            .from('user_profiles')
+            .update(updates)
+            .eq('id', currentUser!.id)
+            .select()
+            .single();
+
+        return response;
+      }
+    } on PostgrestException catch (error) {
+      print('Supabase error updating profile: ${error.message}');
+      print('Error details: ${error.details}');
+      print('Error hint: ${error.hint}');
+      throw Exception('Failed to update user profile: ${error.message}');
     } catch (error) {
+      print('General error updating profile: $error');
       throw Exception('Failed to update user profile: $error');
     }
   }
