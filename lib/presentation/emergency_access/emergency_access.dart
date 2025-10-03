@@ -46,9 +46,32 @@ class _EmergencyAccessState extends State<EmergencyAccess> {
       // Load user profile
       _userProfile = await _authService.getUserProfile();
 
-      // Load emergency contacts with userId parameter
-      _emergencyContacts =
-          await _healthService.getEmergencyContacts(currentUserId);
+      // Extract emergency contact from user profile
+      if (_userProfile != null && _userProfile!['emergency_contact'] != null && 
+          _userProfile!['emergency_contact'].toString().isNotEmpty) {
+        
+        // Create emergency contact entry with available information
+        String contactName = _userProfile!['emergency_contact'].toString();
+        String contactPhone = _userProfile!['phone']?.toString() ?? 'No phone number';
+        
+        // If emergency contact looks like a phone number, swap the fields
+        if (RegExp(r'^[\d\s\-\+\(\)]+$').hasMatch(contactName)) {
+          String temp = contactName;
+          contactName = _userProfile!['full_name']?.toString() ?? 'Emergency Contact';
+          contactPhone = temp;
+        }
+        
+        _emergencyContacts = [
+          {
+            'name': contactName,
+            'relationship': 'Emergency Contact',
+            'phone': contactPhone,
+            'is_primary': true,
+          }
+        ];
+      } else {
+        _emergencyContacts = [];
+      }
 
       // Load critical medical info with userId parameter
       _criticalMedicalInfo =
@@ -252,28 +275,21 @@ class _EmergencyAccessState extends State<EmergencyAccess> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Emergency Contact',
+                          'Allergies',
                           style: TextStyle(
                             fontSize: 14.sp,
                             color: AppTheme.textSecondaryLight,
                           ),
                         ),
                         Text(
-                          _userProfile?['emergency_contact_name'] ??
-                              'Not specified',
+                          _userProfile?['allergies']?.toString().isNotEmpty == true
+                              ? _userProfile!['allergies'] 
+                              : 'None specified',
                           style: TextStyle(
                             fontSize: 16.sp,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
-                        if (_userProfile?['emergency_contact_phone'] != null)
-                          Text(
-                            _userProfile!['emergency_contact_phone'],
-                            style: TextStyle(
-                              fontSize: 12.sp,
-                              color: AppTheme.textSecondaryLight,
-                            ),
-                          ),
                       ],
                     ),
                   ),
@@ -309,12 +325,29 @@ class _EmergencyAccessState extends State<EmergencyAccess> {
             ),
             SizedBox(height: 16.sp),
             if (_emergencyContacts.isEmpty)
-              Text(
-                'No emergency contacts added',
-                style: TextStyle(
-                  color: AppTheme.textSecondaryLight,
-                  fontSize: 14.sp,
-                ),
+              Column(
+                children: [
+                  Text(
+                    'No emergency contacts added',
+                    style: TextStyle(
+                      color: AppTheme.textSecondaryLight,
+                      fontSize: 14.sp,
+                    ),
+                  ),
+                  SizedBox(height: 8.sp),
+                  TextButton(
+                    onPressed: () {
+                      Navigator.pushNamed(context, '/user-profile-settings');
+                    },
+                    child: Text(
+                      'Add Emergency Contact',
+                      style: TextStyle(
+                        color: AppTheme.primaryLight,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
               )
             else
               ..._emergencyContacts.map((contact) => Container(
@@ -358,6 +391,15 @@ class _EmergencyAccessState extends State<EmergencyAccess> {
                                   fontSize: 12.sp,
                                 ),
                               ),
+                              if (contact['phone'] != null && contact['phone'] != 'No phone number')
+                                Text(
+                                  contact['phone'],
+                                  style: TextStyle(
+                                    color: AppTheme.primaryLight,
+                                    fontSize: 14.sp,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
                             ],
                           ),
                         ),

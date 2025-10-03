@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:sizer/sizer.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/app_export.dart';
+import '../../services/auth_service.dart';
 import './widgets/animated_logo_widget.dart';
 import './widgets/background_gradient_widget.dart';
 import './widgets/loading_indicator_widget.dart';
@@ -23,10 +25,10 @@ class _SplashScreenState extends State<SplashScreen>
   String _loadingText = 'Initializing Health Vault...';
   bool _isInitialized = false;
 
-  // Mock user authentication status
+  // Authentication and onboarding services
+  final AuthService _authService = AuthService();
   bool _isUserAuthenticated = false;
-  bool _hasBiometricSetup = false;
-  bool _isNewUser = true;
+  bool _hasCompletedOnboarding = false;
 
   @override
   void initState() {
@@ -102,25 +104,42 @@ class _SplashScreenState extends State<SplashScreen>
 
   /// Check user authentication status
   Future<void> _checkAuthenticationStatus() async {
-    // Simulate authentication check
     await Future.delayed(const Duration(milliseconds: 400));
 
-    // Mock authentication status - in real app, check stored credentials
-    setState(() {
-      _isUserAuthenticated = false; // Mock: user not authenticated
-      _isNewUser = true; // Mock: new user
-    });
+    try {
+      // Check if user is authenticated with Supabase
+      setState(() {
+        _isUserAuthenticated = _authService.isAuthenticated;
+      });
+
+      // Check if user has completed onboarding
+      if (_isUserAuthenticated) {
+        final prefs = await SharedPreferences.getInstance();
+        setState(() {
+          _hasCompletedOnboarding = prefs.getBool('onboarding_completed') ?? false;
+        });
+      } else {
+        // Check if first-time user (for onboarding)
+        final prefs = await SharedPreferences.getInstance();
+        setState(() {
+          _hasCompletedOnboarding = prefs.getBool('onboarding_completed') ?? false;
+        });
+      }
+    } catch (e) {
+      print('Error checking authentication status: $e');
+      setState(() {
+        _isUserAuthenticated = false;
+        _hasCompletedOnboarding = false;
+      });
+    }
   }
 
   /// Prepare biometric authentication
   Future<void> _prepareBiometricAuth() async {
     // Simulate biometric setup check
     await Future.delayed(const Duration(milliseconds: 300));
-
-    // Mock biometric availability
-    setState(() {
-      _hasBiometricSetup = false; // Mock: biometric not set up
-    });
+    // Note: Biometric authentication can be implemented later
+    // For now, we'll focus on email/password authentication
   }
 
   /// Load user health preferences
@@ -141,14 +160,14 @@ class _SplashScreenState extends State<SplashScreen>
   void _navigateToNextScreen() {
     if (!mounted) return;
 
-    if (_isUserAuthenticated && _hasBiometricSetup) {
-      // Authenticated users with biometric setup go to dashboard
+    if (_isUserAuthenticated) {
+      // Authenticated users go directly to dashboard
       Navigator.pushReplacementNamed(context, '/health-dashboard');
-    } else if (_isNewUser) {
-      // New users see onboarding flow
+    } else if (!_hasCompletedOnboarding) {
+      // New users see onboarding flow first
       Navigator.pushReplacementNamed(context, '/onboarding-flow');
     } else {
-      // Returning non-authenticated users go to login
+      // Returning users who have completed onboarding but aren't logged in go to login
       Navigator.pushReplacementNamed(context, '/login-screen');
     }
   }

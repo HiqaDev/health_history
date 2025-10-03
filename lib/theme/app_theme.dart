@@ -106,7 +106,7 @@ class AppTheme {
     ),
 
     // Card theme - Subtle elevation for hierarchy
-    cardTheme: CardTheme(
+    cardTheme: CardThemeData(
       color: cardLight,
       elevation: 2.0,
       shadowColor: shadowLight,
@@ -321,7 +321,7 @@ class AppTheme {
     ),
 
     // Tab bar theme
-    tabBarTheme: TabBarTheme(
+    tabBarTheme: TabBarThemeData(
       labelColor: primaryLight,
       unselectedLabelColor: textMediumEmphasisLight,
       indicatorColor: primaryLight,
@@ -432,7 +432,7 @@ class AppTheme {
     ),
 
     // Card theme
-    cardTheme: CardTheme(
+    cardTheme: CardThemeData(
       color: cardDark,
       elevation: 2.0,
       shadowColor: shadowDark,
@@ -647,7 +647,7 @@ class AppTheme {
     ),
 
     // Tab bar theme
-    tabBarTheme: TabBarTheme(
+    tabBarTheme: TabBarThemeData(
       labelColor: primaryDark,
       unselectedLabelColor: textMediumEmphasisDark,
       indicatorColor: primaryDark,

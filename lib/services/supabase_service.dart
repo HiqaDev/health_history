@@ -19,7 +19,7 @@ class SupabaseService {
       _supabaseAnonKey = const String.fromEnvironment('SUPABASE_ANON_KEY');
 
       // If not found in environment, try to load from env.json
-      if (_supabaseUrl?.isEmpty ?? true || _supabaseAnonKey?.isEmpty ?? true) {
+      if ((_supabaseUrl?.isEmpty ?? true) || (_supabaseAnonKey?.isEmpty ?? true)) {
         try {
           final String envString = await rootBundle.loadString('env.json');
           final Map<String, dynamic> envData = json.decode(envString);
@@ -31,7 +31,7 @@ class SupabaseService {
         }
       }
 
-      if (_supabaseUrl?.isEmpty ?? true || _supabaseAnonKey?.isEmpty ?? true) {
+      if ((_supabaseUrl?.isEmpty ?? true) || (_supabaseAnonKey?.isEmpty ?? true)) {
         throw Exception(
             'SUPABASE_URL and SUPABASE_ANON_KEY must be defined in environment variables or env.json file.');
       }

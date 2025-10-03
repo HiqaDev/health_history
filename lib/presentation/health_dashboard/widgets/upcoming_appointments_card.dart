@@ -103,11 +103,57 @@ class UpcomingAppointmentsCard extends StatelessWidget {
             height: 12.w,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(8),
-              image: DecorationImage(
-                image: NetworkImage(appointment["avatar"] as String),
-                fit: BoxFit.cover,
-              ),
+              color: AppTheme.lightTheme.colorScheme.primary.withValues(alpha: 0.1),
             ),
+            child: appointment["avatar"] != null && appointment["avatar"].toString().isNotEmpty
+                ? ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.network(
+                      appointment["avatar"] as String,
+                      width: 12.w,
+                      height: 12.w,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) {
+                        return Container(
+                          width: 12.w,
+                          height: 12.w,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(8),
+                            color: AppTheme.lightTheme.colorScheme.primary.withValues(alpha: 0.2),
+                          ),
+                          child: Icon(
+                            Icons.person,
+                            color: AppTheme.lightTheme.colorScheme.primary,
+                            size: 6.w,
+                          ),
+                        );
+                      },
+                      loadingBuilder: (context, child, loadingProgress) {
+                        if (loadingProgress == null) return child;
+                        return Container(
+                          width: 12.w,
+                          height: 12.w,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(8),
+                            color: AppTheme.lightTheme.colorScheme.primary.withValues(alpha: 0.1),
+                          ),
+                          child: Center(
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                AppTheme.lightTheme.colorScheme.primary,
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  )
+                : Icon(
+                    Icons.person,
+                    color: AppTheme.lightTheme.colorScheme.primary,
+                    size: 6.w,
+                  ),
           ),
           SizedBox(width: 3.w),
           Expanded(

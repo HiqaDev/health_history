@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:sizer/sizer.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/app_export.dart';
 import './widgets/onboarding_page_widget.dart';
@@ -110,20 +111,30 @@ class _OnboardingFlowState extends State<OnboardingFlow>
     }
   }
 
-  void _skipOnboarding() {
+  void _skipOnboarding() async {
     HapticFeedback.mediumImpact();
+    
+    // Mark onboarding as completed
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('onboarding_completed', true);
+    
     Navigator.pushNamedAndRemoveUntil(
       context,
-      '/user-registration',
+      '/login-screen',
       (route) => false,
     );
   }
 
-  void _completeOnboarding() {
+  void _completeOnboarding() async {
     HapticFeedback.heavyImpact();
+    
+    // Mark onboarding as completed
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('onboarding_completed', true);
+    
     Navigator.pushNamedAndRemoveUntil(
       context,
-      '/user-registration',
+      '/login-screen',
       (route) => false,
     );
   }

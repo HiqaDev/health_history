@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../../models/medication_models.dart';
 
 /// Displays adherence tracking with progress charts, streak counters, and achievement badges
 /// Provides visual feedback on medication compliance over time
@@ -301,38 +302,4 @@ class AdherenceTrackingWidget extends StatelessWidget {
   }
 }
 
-/// Data model for adherence tracking
-class AdherenceData {
-  final int currentStreak;
-  final double weeklyPercentage;
-  final double monthlyPercentage;
-  final List<double> weeklyData;
-  final List<Achievement> achievements;
 
-  const AdherenceData({
-    required this.currentStreak,
-    required this.weeklyPercentage,
-    required this.monthlyPercentage,
-    required this.weeklyData,
-    required this.achievements,
-  });
-}
-
-/// Achievement model
-class Achievement {
-  final String id;
-  final String title;
-  final String description;
-  final IconData icon;
-  final bool isUnlocked;
-  final DateTime? unlockedAt;
-
-  const Achievement({
-    required this.id,
-    required this.title,
-    required this.description,
-    required this.icon,
-    required this.isUnlocked,
-    this.unlockedAt,
-  });
-}

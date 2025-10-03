@@ -307,7 +307,7 @@ class _CustomBottomBarState extends State<CustomBottomBar>
                   _buildEmergencyItem(
                     context,
                     Icons.phone,
-                    'Call 911',
+                    'Call 102',
                     2,
                   ),
                 ],
@@ -471,7 +471,7 @@ class _CustomBottomBarState extends State<CustomBottomBar>
         _showMedicalId(context);
         break;
       case 2:
-        // Call 911
+        // Call 102
         _callEmergency(context);
         break;
     }
@@ -508,7 +508,7 @@ class _CustomBottomBarState extends State<CustomBottomBar>
             ),
             const SizedBox(height: 8),
             Text(
-              '• Emergency Services: 911\n• Poison Control: 1-800-222-1222\n• Crisis Hotline: 988',
+              '• Emergency Services: 102\n• Poison Control: 1-800-222-1222\n• Crisis Hotline: 988',
               style: GoogleFonts.inter(fontSize: 14),
             ),
           ],
@@ -547,7 +547,7 @@ class _CustomBottomBarState extends State<CustomBottomBar>
           ],
         ),
         content: Text(
-          'This will call 911. Are you sure you want to proceed?',
+          'This will call 102. Are you sure you want to proceed?',
           style: GoogleFonts.inter(fontSize: 14),
         ),
         actions: [
@@ -570,7 +570,7 @@ class _CustomBottomBarState extends State<CustomBottomBar>
               backgroundColor: const Color(0xFFFF6B6B),
               foregroundColor: Colors.white,
             ),
-            child: const Text('Call 911'),
+            child: const Text('Call 102'),
           ),
         ],
       ),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../../models/medication_models.dart';
 
 /// Individual medication card with status indicators and quick actions
 /// Displays medication details and provides swipe gestures for additional options
@@ -246,36 +247,4 @@ class MedicationCardWidget extends StatelessWidget {
         return theme.colorScheme.primary; // Blue
     }
   }
-}
-
-/// Data model for medication reminders
-class MedicationReminder {
-  final String id;
-  final String drugName;
-  final String dosage;
-  final String frequency;
-  final String scheduledTime;
-  final String? takenTime;
-  final MedicationStatus status;
-  final String? notes;
-  final DateTime createdAt;
-
-  const MedicationReminder({
-    required this.id,
-    required this.drugName,
-    required this.dosage,
-    required this.frequency,
-    required this.scheduledTime,
-    this.takenTime,
-    required this.status,
-    this.notes,
-    required this.createdAt,
-  });
-}
-
-/// Status of medication reminder
-enum MedicationStatus {
-  taken,
-  missed,
-  upcoming,
 }

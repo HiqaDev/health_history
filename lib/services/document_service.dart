@@ -124,6 +124,11 @@ class DocumentService {
     }
   }
 
+  // Get public URL for uploaded file
+  String getPublicUrl(String bucket, String path) {
+    return _client.storage.from(bucket).getPublicUrl(path);
+  }
+
   // Add document record
   Future<Map<String, dynamic>> addDocumentRecord(
       Map<String, dynamic> documentData) async {

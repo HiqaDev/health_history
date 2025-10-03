@@ -3,10 +3,13 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:sizer/sizer.dart';
+import 'dart:io';
 
 import '../../core/app_export.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/custom_app_bar.dart';
+import '../../services/auth_service.dart';
+import '../../services/document_service.dart';
 import './widgets/camera_preview_widget.dart';
 import './widgets/document_grid_widget.dart';
 import './widgets/scan_controls_widget.dart';
@@ -29,6 +32,8 @@ class _DocumentScannerState extends State<DocumentScanner>
   String _scanMode = 'document'; // document, id, prescription
 
   final ImagePicker _imagePicker = ImagePicker();
+  final _authService = AuthService();
+  final _documentService = DocumentService();
   List<Map<String, dynamic>> _scannedDocuments = [];
 
   @override
@@ -36,6 +41,8 @@ class _DocumentScannerState extends State<DocumentScanner>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _initializeCamera();
+    // TODO: Fix _loadExistingDocuments implementation
+    // _loadExistingDocuments();
   }
 
   @override
@@ -43,6 +50,46 @@ class _DocumentScannerState extends State<DocumentScanner>
     WidgetsBinding.instance.removeObserver(this);
     _cameraController?.dispose();
     super.dispose();
+  }
+
+  void _showError(String message) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  void _showSnackbar(String message, {bool isLoading = false}) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              if (isLoading) ...[
+                SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
+                ),
+                SizedBox(width: 12),
+              ],
+              Expanded(child: Text(message)),
+            ],
+          ),
+          backgroundColor: isLoading ? AppTheme.accentLight : AppTheme.successLight,
+          behavior: SnackBarBehavior.floating,
+          duration: isLoading ? Duration(minutes: 1) : Duration(seconds: 3),
+        ),
+      );
+    }
   }
 
   @override
@@ -277,12 +324,13 @@ class _DocumentScannerState extends State<DocumentScanner>
 
   void _changeScanMode(String mode) {
     setState(() {
-      _scanMode = mode;
+      _scanMode = mode.isNotEmpty ? mode : 'document';
     });
   }
 
   Future<void> _captureDocument() async {
     if (_cameraController == null || !_cameraController!.value.isInitialized) {
+      _showError('Camera not ready. Please wait for initialization.');
       return;
     }
 
@@ -292,7 +340,11 @@ class _DocumentScannerState extends State<DocumentScanner>
 
     try {
       final XFile photo = await _cameraController!.takePicture();
-      await _processScannedImage(photo.path, 'camera');
+      if (photo.path.isNotEmpty) {
+        await _processScannedImage(photo.path, 'camera');
+      } else {
+        _showError('Failed to capture image: Invalid file path');
+      }
     } catch (e) {
       _showError('Failed to capture image: $e');
     } finally {
@@ -313,8 +365,16 @@ class _DocumentScannerState extends State<DocumentScanner>
         imageQuality: 90,
       );
 
-      if (image != null) {
+      if (image != null && image.path.isNotEmpty) {
         await _processScannedImage(image.path, 'gallery');
+      } else if (image == null) {
+        // User cancelled image selection
+        setState(() {
+          _isProcessing = false;
+        });
+        return;
+      } else {
+        _showError('Failed to pick image: Invalid file path');
       }
     } catch (e) {
       _showError('Failed to pick image: $e');
@@ -326,37 +386,93 @@ class _DocumentScannerState extends State<DocumentScanner>
   }
 
   Future<void> _processScannedImage(String imagePath, String source) async {
-    // Simulate document processing
-    await Future.delayed(const Duration(seconds: 2));
+    // Validate input parameters
+    if (imagePath.isEmpty) {
+      _showError('Invalid image path');
+      return;
+    }
 
-    final document = {
-      'id': DateTime.now().millisecondsSinceEpoch.toString(),
-      'title': _generateDocumentTitle(),
-      'imagePath': imagePath,
-      'scanMode': _scanMode,
-      'source': source,
-      'dateScanned': DateTime.now(),
-      'fileSize': '2.1 MB',
-      'extractedText': _getSimulatedExtractedText(),
-    };
+    if (!_authService.isAuthenticated) {
+      _showError('You must be logged in to save documents');
+      return;
+    }
 
-    setState(() {
-      _scannedDocuments.insert(0, document);
-    });
+    try {
+      final userId = _authService.currentUser!.id;
+      
+      // Show upload progress
+      _showSnackbar('Uploading document...', isLoading: true);
+      
+      // Generate filename
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final extension = imagePath.split('.').last;
+      final fileName = '${_scanMode}_${timestamp}.$extension';
+      
+      // Upload image to Supabase storage
+      final storagePath = await _documentService.uploadDocument(
+        userId, 
+        imagePath, 
+        fileName
+      );
+      
+      // Get image file size
+      final file = File(imagePath);
+      final fileSizeBytes = await file.length();
+      final fileSizeMB = (fileSizeBytes / (1024 * 1024)).toStringAsFixed(1);
+      
+      // Create document record
+      final documentData = {
+        'user_id': userId,
+        'title': _generateDocumentTitle() ?? 'Unknown Document',
+        'description': 'Scanned ${_scanMode} document',
+        'document_type': _scanMode,
+        'file_path': storagePath,
+        'file_size': fileSizeBytes,
+        'date_of_document': DateTime.now().toIso8601String(),
+        'source': source,
+        'scan_mode': _scanMode ?? 'document',
+        'status': 'active',
+        'tags': [_scanMode, source],
+      };
+      
+      // Save document record to database
+      final savedDocument = await _documentService.addDocumentRecord(documentData);
+      
+      // Add to local list for immediate UI update
+      final localDocument = {
+        'id': savedDocument['id'].toString(),
+        'title': savedDocument['title'],
+        'imagePath': imagePath, // Keep local path for immediate display
+        'storagePath': storagePath,
+        'scanMode': _scanMode,
+        'source': source,
+        'dateScanned': DateTime.parse(savedDocument['created_at']),
+        'fileSize': '${fileSizeMB} MB',
+        'extractedText': _getSimulatedExtractedText() ?? 'No text extracted',
+      };
 
-    // Show success feedback
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Document scanned successfully'),
-        backgroundColor: AppTheme.successLight,
-        behavior: SnackBarBehavior.floating,
-        action: SnackBarAction(
-          label: 'View',
-          textColor: Colors.white,
-          onPressed: () => _showScannedDocuments(),
+      setState(() {
+        _scannedDocuments.insert(0, localDocument);
+      });
+
+      // Show success feedback
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Document uploaded successfully'),
+          backgroundColor: AppTheme.successLight,
+          behavior: SnackBarBehavior.floating,
+          action: SnackBarAction(
+            label: 'View',
+            textColor: Colors.white,
+            onPressed: () => _showScannedDocuments(),
+          ),
         ),
-      ),
-    );
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      _showError('Failed to save document: $e');
+    }
   }
 
   String _generateDocumentTitle() {
@@ -454,18 +570,6 @@ class _DocumentScannerState extends State<DocumentScanner>
       ),
     );
   }
-
-  void _showError(String message) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(message),
-          backgroundColor: AppTheme.errorLight,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    }
-  }
 }
 
 class _ScannedDocumentsScreen extends StatelessWidget {
@@ -533,6 +637,14 @@ class _ScannedDocumentsScreen extends StatelessWidget {
     BuildContext context,
     Map<String, dynamic> document,
   ) {
+    // Add null safety checks for document data
+    if (document.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Document data is invalid')),
+      );
+      return;
+    }
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,

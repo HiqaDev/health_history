@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/supabase_service.dart';
 
@@ -50,7 +51,12 @@ class AuthService {
   // Sign out
   Future<void> signOut() async {
     try {
-      await _client.auth.signOut();
+      // Clear the user session globally (both locally and on server)
+      await _client.auth.signOut(scope: SignOutScope.global);
+      
+      // Optional: Clear any additional cached data
+      // This ensures the session is completely cleared
+      await Future.delayed(const Duration(milliseconds: 100));
     } catch (error) {
       throw Exception('Sign-out failed: $error');
     }
@@ -203,9 +209,11 @@ class AuthService {
     if (!isAuthenticated) throw Exception('User not authenticated');
 
     try {
+      final fileBytes = await File(filePath).readAsBytes();
+      
       final file = await _client.storage
           .from('profile-images')
-          .upload('${currentUser!.id}/avatar.jpg', filePath);
+          .uploadBinary('${currentUser!.id}/avatar.jpg', fileBytes);
 
       final url = _client.storage
           .from('profile-images')

@@ -1,4 +1,5 @@
 import '../services/supabase_service.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class HealthService {
   final _client = SupabaseService.instance.client;
@@ -342,6 +343,382 @@ class HealthService {
       return activities.take(limit).toList();
     } catch (error) {
       throw Exception('Failed to fetch recent activity: $error');
+    }
+  }
+
+  // ===== ENHANCED METHODS FOR INDIAN HEALTH APP =====
+
+  // Timeline Events Operations
+  Future<List<Map<String, dynamic>>> getTimelineEvents(String userId) async {
+    try {
+      final response = await _client
+          .from('timeline_events')
+          .select('''
+            *, 
+            doctor_profiles!doctor_id(full_name, specialization),
+            medical_documents_enhanced!related_document_ids(title, file_category)
+          ''')
+          .eq('user_id', userId)
+          .order('event_date', ascending: false);
+
+      return List<Map<String, dynamic>>.from(response);
+    } catch (error) {
+      throw Exception('Failed to fetch timeline events: $error');
+    }
+  }
+
+  Future<Map<String, dynamic>> addTimelineEvent(
+      Map<String, dynamic> event) async {
+    try {
+      final response = await _client
+          .from('timeline_events')
+          .insert(event)
+          .select()
+          .single();
+
+      return response;
+    } catch (error) {
+      throw Exception('Failed to add timeline event: $error');
+    }
+  }
+
+  // Medical Documents Enhanced Operations
+  Future<List<Map<String, dynamic>>> getMedicalDocuments(String userId,
+      {String? category, bool? isCritical}) async {
+    try {
+      var query = _client
+          .from('medical_documents_enhanced')
+          .select('''
+            *, 
+            doctor_profiles!doctor_id(full_name, specialization),
+            timeline_events!timeline_event_id(title, event_date)
+          ''')
+          .eq('user_id', userId);
+
+      if (category != null) {
+        query = query.eq('file_category', category);
+      }
+      if (isCritical != null) {
+        query = query.eq('is_critical', isCritical);
+      }
+
+      final response = await query.order('document_date', ascending: false);
+      return List<Map<String, dynamic>>.from(response);
+    } catch (error) {
+      throw Exception('Failed to fetch medical documents: $error');
+    }
+  }
+
+  Future<Map<String, dynamic>> uploadMedicalDocument(
+      Map<String, dynamic> document) async {
+    try {
+      final response = await _client
+          .from('medical_documents_enhanced')
+          .insert(document)
+          .select()
+          .single();
+
+      return response;
+    } catch (error) {
+      throw Exception('Failed to upload medical document: $error');
+    }
+  }
+
+  // QR Code Operations
+  Future<String> createEmergencyQRCode(String userId) async {
+    try {
+      final response = await _client
+          .rpc('create_emergency_qr', params: {'user_uuid': userId});
+      
+      return response as String;
+    } catch (error) {
+      throw Exception('Failed to create emergency QR code: $error');
+    }
+  }
+
+  Future<Map<String, dynamic>?> getQRCodeData(String accessCode) async {
+    try {
+      final response = await _client
+          .from('qr_codes')
+          .select('qr_data')
+          .eq('access_code', accessCode)
+          .eq('is_active', true)
+          .single();
+
+      // Update view count
+      await _client
+          .from('qr_codes')
+          .update({
+            'view_count': SupabaseQueryBuilder.raw('view_count + 1'),
+            'last_accessed_at': DateTime.now().toIso8601String()
+          })
+          .eq('access_code', accessCode);
+
+      return response['qr_data'] as Map<String, dynamic>;
+    } catch (error) {
+      return null; // QR code not found or expired
+    }
+  }
+
+  // Reminders Operations
+  Future<List<Map<String, dynamic>>> getActiveReminders(String userId) async {
+    try {
+      final response = await _client
+          .from('reminders')
+          .select('''
+            *, 
+            medications!related_medication_id(name, dosage),
+            appointments!related_appointment_id(title, appointment_date)
+          ''')
+          .eq('user_id', userId)
+          .eq('is_active', true)
+          .order('scheduled_time', ascending: true);
+
+      return List<Map<String, dynamic>>.from(response);
+    } catch (error) {
+      throw Exception('Failed to fetch reminders: $error');
+    }
+  }
+
+  Future<Map<String, dynamic>> createReminder(
+      Map<String, dynamic> reminder) async {
+    try {
+      final response = await _client
+          .from('reminders')
+          .insert(reminder)
+          .select()
+          .single();
+
+      return response;
+    } catch (error) {
+      throw Exception('Failed to create reminder: $error');
+    }
+  }
+
+  Future<void> markReminderCompleted(String reminderId) async {
+    try {
+      await _client
+          .from('reminders')
+          .update({
+            'is_completed': true,
+            'updated_at': DateTime.now().toIso8601String()
+          })
+          .eq('id', reminderId);
+    } catch (error) {
+      throw Exception('Failed to mark reminder completed: $error');
+    }
+  }
+
+  // Doctor Notes Operations
+  Future<List<Map<String, dynamic>>> getDoctorNotes(String patientId) async {
+    try {
+      final response = await _client
+          .from('doctor_notes')
+          .select('''
+            *, 
+            doctor_profiles!doctor_id(full_name, specialization),
+            timeline_events!timeline_event_id(title, event_type)
+          ''')
+          .eq('patient_id', patientId)
+          .eq('is_shared_with_patient', true)
+          .order('visit_date', ascending: false);
+
+      return List<Map<String, dynamic>>.from(response);
+    } catch (error) {
+      throw Exception('Failed to fetch doctor notes: $error');
+    }
+  }
+
+  // Vaccination Records Operations
+  Future<List<Map<String, dynamic>>> getVaccinations(String userId) async {
+    try {
+      final response = await _client
+          .from('vaccinations')
+          .select()
+          .eq('user_id', userId)
+          .order('administered_date', ascending: false);
+
+      return List<Map<String, dynamic>>.from(response);
+    } catch (error) {
+      throw Exception('Failed to fetch vaccinations: $error');
+    }
+  }
+
+  Future<Map<String, dynamic>> addVaccination(
+      Map<String, dynamic> vaccination) async {
+    try {
+      final response = await _client
+          .from('vaccinations')
+          .insert(vaccination)
+          .select()
+          .single();
+
+      return response;
+    } catch (error) {
+      throw Exception('Failed to add vaccination: $error');
+    }
+  }
+
+  // Health Insurance Operations
+  Future<List<Map<String, dynamic>>> getHealthInsurance(String userId) async {
+    try {
+      final response = await _client
+          .from('health_insurance')
+          .select()
+          .eq('user_id', userId)
+          .eq('is_active', true);
+
+      return List<Map<String, dynamic>>.from(response);
+    } catch (error) {
+      throw Exception('Failed to fetch health insurance: $error');
+    }
+  }
+
+  // Secure Sharing Operations
+  Future<String> createSecureShare({
+    required String userId,
+    required String sharingType,
+    required Map<String, dynamic> sharedData,
+    String? sharedWithEmail,
+    String? doctorId,
+    DateTime? expiresAt,
+    int? maxAccessCount,
+    String? purpose,
+  }) async {
+    try {
+      // Generate unique access code
+      String accessCode;
+      do {
+        accessCode = _generateAccessCode();
+      } while (await _accessCodeExists(accessCode));
+
+      final shareData = {
+        'shared_by': userId,
+        'sharing_type': sharingType,
+        'shared_data': sharedData,
+        'access_code': accessCode,
+        'shared_with_email': sharedWithEmail,
+        'shared_with_doctor_id': doctorId,
+        'expires_at': expiresAt?.toIso8601String(),
+        'max_access_count': maxAccessCount,
+        'purpose': purpose,
+      };
+
+      await _client.from('secure_shares').insert(shareData);
+      return accessCode;
+    } catch (error) {
+      throw Exception('Failed to create secure share: $error');
+    }
+  }
+
+  Future<Map<String, dynamic>?> getSecureShare(String accessCode) async {
+    try {
+      final response = await _client
+          .from('secure_shares')
+          .select()
+          .eq('access_code', accessCode)
+          .eq('is_active', true)
+          .single();
+
+      // Check if expired or max access reached
+      final share = response;
+      if (share['expires_at'] != null &&
+          DateTime.parse(share['expires_at']).isBefore(DateTime.now())) {
+        return null; // Expired
+      }
+      if (share['max_access_count'] != null &&
+          share['current_access_count'] >= share['max_access_count']) {
+        return null; // Max access reached
+      }
+
+      // Update access count
+      await _client
+          .from('secure_shares')
+          .update({
+            'current_access_count': SupabaseQueryBuilder.raw('current_access_count + 1'),
+          })
+          .eq('access_code', accessCode);
+
+      return share;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  // Offline Sync Operations
+  Future<void> queueForOfflineSync({
+    required String userId,
+    required String tableName,
+    required String recordId,
+    required String action,
+    required Map<String, dynamic> data,
+  }) async {
+    try {
+      await _client.from('offline_sync').insert({
+        'user_id': userId,
+        'table_name': tableName,
+        'record_id': recordId,
+        'action': action,
+        'data': data,
+      });
+    } catch (error) {
+      // Silent fail for offline sync
+      print('Failed to queue for offline sync: $error');
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getPendingSyncItems(String userId) async {
+    try {
+      final response = await _client
+          .from('offline_sync')
+          .select()
+          .eq('user_id', userId)
+          .eq('sync_status', 'pending')
+          .order('created_at', ascending: true);
+
+      return List<Map<String, dynamic>>.from(response);
+    } catch (error) {
+      throw Exception('Failed to fetch pending sync items: $error');
+    }
+  }
+
+  // Search Operations
+  Future<List<Map<String, dynamic>>> searchMedicalRecords(
+      String userId, String query) async {
+    try {
+      final response = await _client
+          .from('medical_documents_enhanced')
+          .select()
+          .eq('user_id', userId)
+          .textSearch('title,description,ocr_text', query);
+
+      return List<Map<String, dynamic>>.from(response);
+    } catch (error) {
+      throw Exception('Failed to search medical records: $error');
+    }
+  }
+
+  // Helper methods
+  String _generateAccessCode() {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    final random = DateTime.now().millisecondsSinceEpoch;
+    String result = '';
+    for (int i = 0; i < 8; i++) {
+      result += chars[(random + i) % chars.length];
+    }
+    return result;
+  }
+
+  Future<bool> _accessCodeExists(String accessCode) async {
+    try {
+      final response = await _client
+          .from('secure_shares')
+          .select('id')
+          .eq('access_code', accessCode)
+          .limit(1);
+      return response.isNotEmpty;
+    } catch (error) {
+      return false;
     }
   }
 }

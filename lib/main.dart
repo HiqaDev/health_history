@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:sizer/sizer.dart';
 
-import '../core/app_export.dart';
-import '../widgets/custom_error_widget.dart';
-import './services/supabase_service.dart';
+import 'core/app_export.dart';
+import 'widgets/custom_error_widget.dart';
+import 'services/supabase_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();

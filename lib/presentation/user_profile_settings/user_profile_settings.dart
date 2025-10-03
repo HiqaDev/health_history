@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:io';
 import '../../services/auth_service.dart';
 import '../../services/health_service.dart';
+import '../../services/document_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/custom_app_bar.dart';
 
@@ -15,6 +18,7 @@ class UserProfileSettings extends StatefulWidget {
 class _UserProfileSettingsState extends State<UserProfileSettings> {
   final AuthService _authService = AuthService();
   final HealthService _healthService = HealthService();
+  final DocumentService _documentService = DocumentService();
   final _formKey = GlobalKey<FormState>();
 
   // Form controllers
@@ -32,6 +36,10 @@ class _UserProfileSettingsState extends State<UserProfileSettings> {
   DateTime? _selectedDateOfBirth;
   bool _isLoading = true;
   bool _isSaving = false;
+
+  // Image picker
+  File? _profileImage;
+  final ImagePicker _imagePicker = ImagePicker();
 
   final List<String> _bloodGroups = [
     'Not specified',
@@ -214,29 +222,39 @@ class _UserProfileSettingsState extends State<UserProfileSettings> {
             CircleAvatar(
               radius: 40.sp,
               backgroundColor: AppTheme.primaryLight,
-              child: Text(
-                _nameController.text.isNotEmpty
-                    ? _nameController.text[0].toUpperCase()
-                    : 'U',
-                style: TextStyle(
-                  fontSize: 32.sp,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
+              backgroundImage: _profileImage != null ? FileImage(_profileImage!) : null,
+              child: _profileImage == null
+                  ? Text(
+                      _nameController.text.isNotEmpty
+                          ? _nameController.text[0].toUpperCase()
+                          : 'U',
+                      style: TextStyle(
+                        fontSize: 32.sp,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    )
+                  : null,
             ),
             SizedBox(height: 12.sp),
             TextButton.icon(
-              onPressed: () {
-                // TODO: Implement photo upload
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                      content: Text('Photo upload feature coming soon')),
-                );
-              },
+              onPressed: _pickProfileImage,
               icon: const Icon(Icons.camera_alt),
-              label: const Text('Change Photo'),
+              label: Text(_profileImage == null ? 'Add Photo' : 'Change Photo'),
             ),
+            if (_profileImage != null)
+              TextButton.icon(
+                onPressed: () {
+                  setState(() {
+                    _profileImage = null;
+                  });
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Profile image removed')),
+                  );
+                },
+                icon: const Icon(Icons.delete, color: Colors.red),
+                label: const Text('Remove Photo', style: TextStyle(color: Colors.red)),
+              ),
           ],
         ),
       ),
@@ -583,6 +601,125 @@ class _UserProfileSettingsState extends State<UserProfileSettings> {
         ],
       ),
     );
+  }
+
+  /// Handle profile image selection with proper error handling
+  Future<void> _pickProfileImage() async {
+    try {
+      // Show image source selection dialog
+      final ImageSource? source = await showDialog<ImageSource>(
+        context: context,
+        builder: (BuildContext context) => AlertDialog(
+          title: const Text('Select Image Source'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.camera_alt),
+                title: const Text('Camera'),
+                onTap: () => Navigator.of(context).pop(ImageSource.camera),
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library),
+                title: const Text('Gallery'),
+                onTap: () => Navigator.of(context).pop(ImageSource.gallery),
+              ),
+            ],
+          ),
+        ),
+      );
+
+      if (source == null) return;
+
+      // Pick image with proper error handling
+      final XFile? pickedFile = await _imagePicker.pickImage(
+        source: source,
+        maxWidth: 300,
+        maxHeight: 300,
+        imageQuality: 80,
+      );
+
+      if (pickedFile != null) {
+        // Show upload progress
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Row(
+                children: [
+                  SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  ),
+                  SizedBox(width: 12),
+                  Text('Uploading profile image...'),
+                ],
+              ),
+              duration: Duration(minutes: 1),
+            ),
+          );
+        }
+
+        try {
+          // Upload image to Supabase storage
+          final userId = _authService.currentUser!.id;
+          final fileName = 'profile_${DateTime.now().millisecondsSinceEpoch}.jpg';
+          final storagePath = await _documentService.uploadDocument(
+            userId,
+            pickedFile.path,
+            fileName,
+          );
+
+          // Get the public URL for the uploaded image
+          final imageUrl = _documentService.getPublicUrl('medical-documents', storagePath);
+
+          // Update user profile with new image URL
+          await _authService.updateUserProfile({
+            'profile_image_url': imageUrl,
+          });
+
+          setState(() {
+            _profileImage = File(pickedFile.path);
+          });
+
+          // Hide upload progress and show success
+          if (mounted) {
+            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Profile image uploaded successfully'),
+                backgroundColor: Colors.green,
+              ),
+            );
+          }
+        } catch (uploadError) {
+          // Hide upload progress and show error
+          if (mounted) {
+            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Failed to upload image: $uploadError'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        }
+      }
+    } catch (e) {
+      // Handle errors gracefully
+      print('Error picking image: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error selecting image: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   @override

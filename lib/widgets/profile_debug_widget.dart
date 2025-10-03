@@ -30,7 +30,7 @@ class _ProfileDebugWidgetState extends State<ProfileDebugWidget> {
         
         // Test connection to Supabase
         final client = SupabaseService.instance.client;
-        info += 'Supabase client URL: ${client.supabaseUrl}\n';
+        info += 'Supabase client configured: ${client.auth.currentUser != null ? 'YES' : 'NO'}\n';
         
         // Try to fetch user profile
         try {

@@ -26,20 +26,12 @@ class BackgroundGradientWidget extends StatelessWidget {
       ),
       child: Stack(
         children: [
-          // Subtle pattern overlay
+          // Subtle pattern overlay with custom paint instead of SVG
           Positioned.fill(
             child: Opacity(
-              opacity: 0.1,
-              child: Container(
-                decoration: BoxDecoration(
-                  image: DecorationImage(
-                    image: NetworkImage(
-                      'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMjAiIGN5PSIyMCIgcj0iMiIgZmlsbD0id2hpdGUiLz4KPC9zdmc+',
-                    ),
-                    repeat: ImageRepeat.repeat,
-                    fit: BoxFit.none,
-                  ),
-                ),
+              opacity: 0.05,
+              child: CustomPaint(
+                painter: _DotPatternPainter(),
               ),
             ),
           ),
@@ -63,4 +55,26 @@ class BackgroundGradientWidget extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Custom painter for dot pattern background
+class _DotPatternPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.3)
+      ..style = PaintingStyle.fill;
+
+    const dotSize = 2.0;
+    const spacing = 40.0;
+
+    for (double x = 0; x < size.width; x += spacing) {
+      for (double y = 0; y < size.height; y += spacing) {
+        canvas.drawCircle(Offset(x + 20, y + 20), dotSize, paint);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

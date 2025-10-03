@@ -2,30 +2,92 @@ import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
 
 import '../../../core/app_export.dart';
+import '../../../services/auth_service.dart';
+import '../../../services/health_service.dart';
 
-class EmergencyCard extends StatelessWidget {
+class EmergencyCard extends StatefulWidget {
   const EmergencyCard({super.key});
 
   @override
+  State<EmergencyCard> createState() => _EmergencyCardState();
+}
+
+class _EmergencyCardState extends State<EmergencyCard> {
+  final _authService = AuthService();
+  final _healthService = HealthService();
+  Map<String, dynamic>? emergencyInfo;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadEmergencyData();
+  }
+
+  Future<void> _loadEmergencyData() async {
+    try {
+      if (!_authService.isAuthenticated) return;
+      
+      final userId = _authService.currentUser!.id;
+      final userProfile = await _authService.getUserProfile();
+      final emergencyContacts = await _healthService.getEmergencyContacts(userId);
+      final medications = await _healthService.getMedications(userId);
+      
+      setState(() {
+        emergencyInfo = {
+          "bloodType": userProfile?['blood_type'] ?? 'Not specified',
+          "allergies": userProfile?['allergies'] != null 
+              ? List<String>.from(userProfile!['allergies']) 
+              : ['None reported'],
+          "emergencyContacts": emergencyContacts.map((contact) => {
+            "name": contact['name'],
+            "relationship": contact['relationship'],
+            "phone": contact['phone_number'],
+          }).toList(),
+          "medicalConditions": userProfile?['medical_conditions'] != null
+              ? List<String>.from(userProfile!['medical_conditions'])
+              : ['None reported'],
+          "currentMedications": medications.map((med) => 
+              "${med['name']} ${med['dosage'] ?? ''}").toList(),
+        };
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        // Fallback to basic data if error
+        emergencyInfo = {
+          "bloodType": "Not specified",
+          "allergies": ["None reported"],
+          "emergencyContacts": [],
+          "medicalConditions": ["None reported"],
+          "currentMedications": ["None reported"],
+        };
+        _isLoading = false;
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final Map<String, dynamic> emergencyInfo = {
-      "bloodType": "O+",
-      "allergies": ["Penicillin", "Shellfish", "Peanuts"],
-      "emergencyContacts": [
-        {
-          "name": "Sarah Johnson",
-          "relationship": "Spouse",
-          "phone": "+1 (555) 123-4567",
-        },
-        {
-          "name": "Michael Johnson",
-          "relationship": "Son",
-          "phone": "+1 (555) 987-6543",
-        },
-      ],
-      "medicalConditions": ["Hypertension", "Type 2 Diabetes"],
-      "currentMedications": ["Lisinopril 10mg", "Metformin 500mg"],
-    };
+    if (_isLoading) {
+      return Container(
+        width: double.infinity,
+        padding: EdgeInsets.all(4.w),
+        decoration: BoxDecoration(
+          color: AppTheme.lightTheme.colorScheme.surface,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Center(
+          child: CircularProgressIndicator(
+            color: AppTheme.accentLight,
+          ),
+        ),
+      );
+    }
+
+    if (emergencyInfo == null) {
+      return const SizedBox.shrink();
+    }
 
     return Container(
       width: double.infinity,
@@ -116,7 +178,7 @@ class EmergencyCard extends StatelessWidget {
                 child: _buildInfoItem(
                   context,
                   'Blood Type',
-                  emergencyInfo["bloodType"] as String,
+                  emergencyInfo!["bloodType"] as String,
                   'water_drop',
                   AppTheme.accentLight,
                 ),
@@ -126,7 +188,7 @@ class EmergencyCard extends StatelessWidget {
                 child: _buildInfoItem(
                   context,
                   'Allergies',
-                  '${(emergencyInfo["allergies"] as List).length} items',
+                  '${(emergencyInfo!["allergies"] as List).length} items',
                   'warning',
                   AppTheme.warningLight,
                 ),
@@ -142,7 +204,7 @@ class EmergencyCard extends StatelessWidget {
             ),
           ),
           SizedBox(height: 1.h),
-          ...(emergencyInfo["emergencyContacts"] as List<Map<String, dynamic>>)
+          ...(emergencyInfo!["emergencyContacts"] as List<Map<String, dynamic>>)
               .map(
                 (contact) => _buildEmergencyContact(context, contact),
               )
@@ -153,7 +215,7 @@ class EmergencyCard extends StatelessWidget {
               Expanded(
                 child: ElevatedButton.icon(
                   onPressed: () =>
-                      _showFullEmergencyInfo(context, emergencyInfo),
+                      _showFullEmergencyInfo(context, emergencyInfo!),
                   icon: CustomIconWidget(
                     iconName: 'medical_information',
                     color: Colors.white,
@@ -185,7 +247,7 @@ class EmergencyCard extends StatelessWidget {
                     size: 4.w,
                   ),
                   label: Text(
-                    'Call 911',
+                    'Call 102',
                     style: AppTheme.lightTheme.textTheme.labelMedium?.copyWith(
                       color: AppTheme.accentLight,
                       fontWeight: FontWeight.w600,
@@ -336,11 +398,13 @@ class EmergencyCard extends StatelessWidget {
               size: 6.w,
             ),
             SizedBox(width: 2.w),
-            Text(
-              'Emergency Medical Information',
-              style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-                color: AppTheme.accentLight,
+            Expanded(
+              child: Text(
+                'Emergency Medical Information',
+                style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.accentLight,
+                ),
               ),
             ),
           ],
@@ -374,7 +438,7 @@ class EmergencyCard extends StatelessWidget {
             style: ElevatedButton.styleFrom(
               backgroundColor: AppTheme.accentLight,
             ),
-            child: const Text('Call 911'),
+            child: const Text('Call 102'),
           ),
         ],
       ),
@@ -446,7 +510,7 @@ class EmergencyCard extends StatelessWidget {
           ],
         ),
         content: const Text(
-            'This will call emergency services (911). Are you sure?'),
+            'This will call emergency services (102). Are you sure?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
@@ -466,7 +530,7 @@ class EmergencyCard extends StatelessWidget {
             style: ElevatedButton.styleFrom(
               backgroundColor: AppTheme.accentLight,
             ),
-            child: const Text('Call 911'),
+            child: const Text('Call 102'),
           ),
         ],
       ),
