@@ -4,6 +4,8 @@ import 'package:sizer/sizer.dart';
 
 import '../../core/app_export.dart';
 import '../../services/auth_service.dart';
+import '../../theme/app_theme.dart';
+import '../../widgets/custom_icon_widget.dart';
 import './widgets/blood_group_selector_widget.dart';
 import './widgets/emergency_contact_widget.dart';
 import './widgets/password_strength_widget.dart';
@@ -39,6 +41,7 @@ class _UserRegistrationState extends State<UserRegistration> {
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
   bool _isLoading = false;
+  bool _isEditMode = false;
 
   // Focus nodes for keyboard handling
   final _fullNameFocus = FocusNode();
@@ -51,8 +54,49 @@ class _UserRegistrationState extends State<UserRegistration> {
   void initState() {
     super.initState();
     _emergencyContacts = [
-      {'name': '', 'phone': '', 'relationship': 'Spouse'}
+      {'name': '', 'phone': '', 'relationship': 'Spouse'},
     ];
+    _checkIfEditMode();
+  }
+
+  void _checkIfEditMode() async {
+    // Check if user is editing existing profile
+    if (_authService.isAuthenticated) {
+      _isEditMode = true;
+      await _loadExistingProfile();
+    }
+  }
+
+  Future<void> _loadExistingProfile() async {
+    try {
+      final profile = await _authService.getUserProfile();
+      if (profile != null) {
+        setState(() {
+          _fullNameController.text = profile['full_name'] ?? '';
+          _emailController.text = profile['email'] ?? '';
+          _phoneController.text = profile['phone'] ?? '';
+          _selectedGender = profile['gender'];
+          _selectedBloodGroup = profile['blood_group'];
+          if (profile['date_of_birth'] != null) {
+            _selectedDateOfBirth = DateTime.parse(profile['date_of_birth']);
+          }
+          if (profile['emergency_contact_name'] != null) {
+            _emergencyContacts = [
+              {
+                'name': profile['emergency_contact_name'] ?? '',
+                'phone': profile['emergency_contact_phone'] ?? '',
+                'relationship': 'Emergency Contact',
+              },
+            ];
+          }
+          // Skip terms acceptance in edit mode
+          _acceptTerms = true;
+          _acceptHipaa = true;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading profile: $e');
+    }
   }
 
   @override
@@ -72,11 +116,25 @@ class _UserRegistrationState extends State<UserRegistration> {
   }
 
   bool _isFormValid() {
+    if (_isEditMode) {
+      // For edit mode, don't require password fields
+      return _formKey.currentState?.validate() == true &&
+          _selectedDateOfBirth != null &&
+          _selectedBloodGroup != null &&
+          _emergencyContacts.any(
+            (contact) =>
+                contact['name']!.isNotEmpty && contact['phone']!.isNotEmpty,
+          );
+    }
+
+    // For registration mode, require all fields including terms
     return _formKey.currentState?.validate() == true &&
         _selectedDateOfBirth != null &&
         _selectedBloodGroup != null &&
-        _emergencyContacts.any((contact) =>
-            contact['name']!.isNotEmpty && contact['phone']!.isNotEmpty) &&
+        _emergencyContacts.any(
+          (contact) =>
+              contact['name']!.isNotEmpty && contact['phone']!.isNotEmpty,
+        ) &&
         _acceptTerms &&
         _acceptHipaa;
   }
@@ -90,9 +148,9 @@ class _UserRegistrationState extends State<UserRegistration> {
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
-            colorScheme: Theme.of(context).colorScheme.copyWith(
-                  primary: AppTheme.lightTheme.primaryColor,
-                ),
+            colorScheme: Theme.of(
+              context,
+            ).colorScheme.copyWith(primary: AppTheme.lightTheme.primaryColor),
           ),
           child: child!,
         );
@@ -118,48 +176,12 @@ class _UserRegistrationState extends State<UserRegistration> {
     });
 
     try {
-      // Check if email is already taken
-      final isEmailAvailable =
-          await _authService.isEmailAvailable(_emailController.text.trim());
-
-      if (!isEmailAvailable) {
-        if (mounted) {
-          _showErrorDialog(
-              'This email address is already in use. Please use a different email or try signing in.');
-        }
-        return;
-      }
-
-      // Prepare user metadata
-      final userData = {
-        'full_name': _fullNameController.text.trim(),
-        'role': 'patient',
-        'phone': _phoneController.text.trim(),
-        'gender': _selectedGender,
-        'date_of_birth': _selectedDateOfBirth?.toIso8601String().split('T')[0],
-        'blood_group': _selectedBloodGroup,
-        'emergency_contact_name': _emergencyContacts.isNotEmpty
-            ? _emergencyContacts[0]['name']
-            : null,
-        'emergency_contact_phone': _emergencyContacts.isNotEmpty
-            ? _emergencyContacts[0]['phone']
-            : null,
-      };
-
-      // Create account with Supabase Auth
-      final response = await _authService.signUp(
-        email: _emailController.text.trim(),
-        password: _passwordController.text,
-        userData: userData,
-      );
-
-      if (response.user != null) {
-        // Account created successfully, profile will be created by trigger
-        if (mounted) {
-          _showSuccessDialog();
-        }
+      if (_isEditMode) {
+        // Update existing profile
+        await _updateProfile();
       } else {
-        throw Exception('Failed to create account. Please try again.');
+        // Create new account
+        await _registerNewUser();
       }
     } catch (e) {
       if (mounted) {
@@ -192,105 +214,231 @@ class _UserRegistrationState extends State<UserRegistration> {
     }
   }
 
+  Future<void> _registerNewUser() async {
+    // Check if email is already taken
+    final isEmailAvailable = await _authService.isEmailAvailable(
+      _emailController.text.trim(),
+    );
+
+    if (!isEmailAvailable) {
+      if (mounted) {
+        _showErrorDialog(
+          'This email address is already in use. Please use a different email or try signing in.',
+        );
+      }
+      return;
+    }
+
+    // Prepare user metadata
+    final userData = {
+      'full_name': _fullNameController.text.trim(),
+      'role': 'patient',
+      'phone': _phoneController.text.trim(),
+      'gender': _selectedGender,
+      'date_of_birth': _selectedDateOfBirth?.toIso8601String().split('T')[0],
+      'blood_group': _selectedBloodGroup,
+      'emergency_contact_name':
+          _emergencyContacts.isNotEmpty ? _emergencyContacts[0]['name'] : null,
+      'emergency_contact_phone':
+          _emergencyContacts.isNotEmpty ? _emergencyContacts[0]['phone'] : null,
+    };
+
+    // Create account with Supabase Auth
+    final response = await _authService.signUp(
+      email: _emailController.text.trim(),
+      password: _passwordController.text,
+      userData: userData,
+    );
+
+    if (response.user != null) {
+      // Account created successfully, profile will be created by trigger
+      if (mounted) {
+        _showSuccessDialog();
+      }
+    } else {
+      throw Exception('Failed to create account. Please try again.');
+    }
+  }
+
+  Future<void> _updateProfile() async {
+    // Prepare updated user data
+    final userData = {
+      'full_name': _fullNameController.text.trim(),
+      'phone': _phoneController.text.trim(),
+      'gender': _selectedGender,
+      'date_of_birth': _selectedDateOfBirth?.toIso8601String().split('T')[0],
+      'blood_group': _selectedBloodGroup,
+      'emergency_contact_name':
+          _emergencyContacts.isNotEmpty ? _emergencyContacts[0]['name'] : null,
+      'emergency_contact_phone':
+          _emergencyContacts.isNotEmpty ? _emergencyContacts[0]['phone'] : null,
+    };
+
+    // Update profile
+    final result = await _authService.updateUserProfile(userData);
+
+    if (result is Map<String, dynamic> && result['success'] == true) {
+      if (mounted) {
+        _showProfileUpdateSuccessDialog();
+      }
+    } else {
+      throw Exception('Failed to update profile. Please try again.');
+    }
+  }
+
+  void _showProfileUpdateSuccessDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder:
+          (context) => AlertDialog(
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 20.w,
+                  height: 20.w,
+                  decoration: BoxDecoration(
+                    color: AppTheme.successLight.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Center(
+                    child: CustomIconWidget(
+                      iconName: 'check',
+                      size: 10.w,
+                      color: AppTheme.successLight,
+                    ),
+                  ),
+                ),
+                SizedBox(height: 3.h),
+                Text(
+                  'Profile Updated Successfully!',
+                  style: AppTheme.lightTheme.textTheme.titleMedium,
+                  textAlign: TextAlign.center,
+                ),
+                SizedBox(height: 2.h),
+                Text(
+                  'Your profile information has been updated.',
+                  style: AppTheme.lightTheme.textTheme.bodyMedium,
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+            actions: [
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  Navigator.pop(context); // Return to previous screen
+                },
+                child: const Text('Continue'),
+              ),
+            ],
+          ),
+    );
+  }
+
   void _showSuccessDialog() {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 20.w,
-              height: 20.w,
-              decoration: BoxDecoration(
-                color: AppTheme.successLight.withValues(alpha: 0.1),
-                shape: BoxShape.circle,
-              ),
-              child: Center(
-                child: CustomIconWidget(
-                  iconName: 'check',
-                  size: 10.w,
-                  color: AppTheme.successLight,
+      builder:
+          (context) => AlertDialog(
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 20.w,
+                  height: 20.w,
+                  decoration: BoxDecoration(
+                    color: AppTheme.successLight.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Center(
+                    child: CustomIconWidget(
+                      iconName: 'check',
+                      size: 10.w,
+                      color: AppTheme.successLight,
+                    ),
+                  ),
                 ),
+                SizedBox(height: 3.h),
+                Text(
+                  'Account Created Successfully!',
+                  style: AppTheme.lightTheme.textTheme.titleMedium,
+                  textAlign: TextAlign.center,
+                ),
+                SizedBox(height: 2.h),
+                Text(
+                  'Welcome to Health History. Your secure digital health vault is ready.',
+                  style: AppTheme.lightTheme.textTheme.bodyMedium,
+                  textAlign: TextAlign.center,
+                ),
+                SizedBox(height: 1.h),
+                Text(
+                  'Please check your email to verify your account.',
+                  style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
+                    color: AppTheme.lightTheme.colorScheme.primary,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+            actions: [
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  Navigator.pushNamedAndRemoveUntil(
+                    context,
+                    '/health-dashboard',
+                    (route) => false,
+                  );
+                },
+                child: const Text('Get Started'),
               ),
-            ),
-            SizedBox(height: 3.h),
-            Text(
-              'Account Created Successfully!',
-              style: AppTheme.lightTheme.textTheme.titleMedium,
-              textAlign: TextAlign.center,
-            ),
-            SizedBox(height: 2.h),
-            Text(
-              'Welcome to Health History. Your secure digital health vault is ready.',
-              style: AppTheme.lightTheme.textTheme.bodyMedium,
-              textAlign: TextAlign.center,
-            ),
-            SizedBox(height: 1.h),
-            Text(
-              'Please check your email to verify your account.',
-              style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
-                color: AppTheme.lightTheme.colorScheme.primary,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-        actions: [
-          ElevatedButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              Navigator.pushNamedAndRemoveUntil(
-                context,
-                '/health-dashboard',
-                (route) => false,
-              );
-            },
-            child: const Text('Get Started'),
+            ],
           ),
-        ],
-      ),
     );
   }
 
   void _showErrorDialog(String message) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Row(
-          children: [
-            CustomIconWidget(
-              iconName: 'error',
-              size: 6.w,
-              color: AppTheme.errorLight,
+      builder:
+          (context) => AlertDialog(
+            title: Row(
+              children: [
+                CustomIconWidget(
+                  iconName: 'error',
+                  size: 6.w,
+                  color: AppTheme.errorLight,
+                ),
+                SizedBox(width: 2.w),
+                const Text('Registration Error'),
+              ],
             ),
-            SizedBox(width: 2.w),
-            const Text('Registration Error'),
-          ],
-        ),
-        content: Text(message),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('OK'),
+            content: Text(message),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('OK'),
+              ),
+            ],
           ),
-        ],
-      ),
     );
   }
 
   void _showTermsDialog() {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Terms & Conditions'),
-        content: SizedBox(
-          width: double.maxFinite,
-          height: 40.h,
-          child: SingleChildScrollView(
-            child: Text(
-              '''By creating an account, you agree to our Terms of Service and Privacy Policy.
+      builder:
+          (context) => AlertDialog(
+            title: const Text('Terms & Conditions'),
+            content: SizedBox(
+              width: double.maxFinite,
+              height: 40.h,
+              child: SingleChildScrollView(
+                child: Text(
+                  '''By creating an account, you agree to our Terms of Service and Privacy Policy.
 
 HEALTH DATA PRIVACY:
 • Your medical information is encrypted and stored securely
@@ -311,31 +459,32 @@ MEDICAL DISCLAIMER:
 • Verify all medical information with your healthcare provider
 
 By proceeding, you acknowledge that you have read and understood these terms.''',
-              style: AppTheme.lightTheme.textTheme.bodySmall,
+                  style: AppTheme.lightTheme.textTheme.bodySmall,
+                ),
+              ),
             ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Close'),
+              ),
+            ],
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
     );
   }
 
   void _showHipaaDialog() {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('HIPAA Compliance Notice'),
-        content: SizedBox(
-          width: double.maxFinite,
-          height: 40.h,
-          child: SingleChildScrollView(
-            child: Text(
-              '''HEALTH INSURANCE PORTABILITY AND ACCOUNTABILITY ACT (HIPAA) NOTICE
+      builder:
+          (context) => AlertDialog(
+            title: const Text('HIPAA Compliance Notice'),
+            content: SizedBox(
+              width: double.maxFinite,
+              height: 40.h,
+              child: SingleChildScrollView(
+                child: Text(
+                  '''HEALTH INSURANCE PORTABILITY AND ACCOUNTABILITY ACT (HIPAA) NOTICE
 
 PROTECTED HEALTH INFORMATION:
 • Your health information is protected under HIPAA regulations
@@ -362,17 +511,17 @@ BREACH NOTIFICATION:
 • Appropriate authorities will be notified as required by law
 
 By accepting, you acknowledge understanding of your HIPAA rights and our privacy practices.''',
-              style: AppTheme.lightTheme.textTheme.bodySmall,
+                  style: AppTheme.lightTheme.textTheme.bodySmall,
+                ),
+              ),
             ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Close'),
+              ),
+            ],
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
     );
   }
 
@@ -389,42 +538,54 @@ By accepting, you acknowledge understanding of your HIPAA rights and our privacy
         ),
         SizedBox(height: 1.h),
         Row(
-          children: ['Male', 'Female', 'Other'].map((gender) {
-            final isSelected = _selectedGender == gender;
-            return Expanded(
-              child: GestureDetector(
-                onTap: () => setState(() => _selectedGender = gender),
-                child: Container(
-                  margin: EdgeInsets.only(right: gender != 'Other' ? 2.w : 0),
-                  padding: EdgeInsets.symmetric(vertical: 2.h),
-                  decoration: BoxDecoration(
-                    color: isSelected
-                        ? AppTheme.lightTheme.colorScheme.primary
-                            .withValues(alpha: 0.1)
-                        : AppTheme.lightTheme.colorScheme.surface,
-                    border: Border.all(
-                      color: isSelected
-                          ? AppTheme.lightTheme.colorScheme.primary
-                          : AppTheme.lightTheme.dividerColor,
-                      width: isSelected ? 2 : 1,
+          children:
+              ['Male', 'Female', 'Other'].map((gender) {
+                final isSelected = _selectedGender == gender;
+                return Expanded(
+                  child: GestureDetector(
+                    onTap: () => setState(() => _selectedGender = gender),
+                    child: Container(
+                      margin: EdgeInsets.only(
+                        right: gender != 'Other' ? 2.w : 0,
+                      ),
+                      padding: EdgeInsets.symmetric(vertical: 2.h),
+                      decoration: BoxDecoration(
+                        color:
+                            isSelected
+                                ? AppTheme.lightTheme.colorScheme.primary
+                                    .withValues(alpha: 0.1)
+                                : AppTheme.lightTheme.colorScheme.surface,
+                        border: Border.all(
+                          color:
+                              isSelected
+                                  ? AppTheme.lightTheme.colorScheme.primary
+                                  : AppTheme.lightTheme.dividerColor,
+                          width: isSelected ? 2 : 1,
+                        ),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        gender,
+                        textAlign: TextAlign.center,
+                        style: AppTheme.lightTheme.textTheme.bodyMedium
+                            ?.copyWith(
+                              color:
+                                  isSelected
+                                      ? AppTheme.lightTheme.colorScheme.primary
+                                      : AppTheme
+                                          .lightTheme
+                                          .colorScheme
+                                          .onSurface,
+                              fontWeight:
+                                  isSelected
+                                      ? FontWeight.w600
+                                      : FontWeight.normal,
+                            ),
+                      ),
                     ),
-                    borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Text(
-                    gender,
-                    textAlign: TextAlign.center,
-                    style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
-                      color: isSelected
-                          ? AppTheme.lightTheme.colorScheme.primary
-                          : AppTheme.lightTheme.colorScheme.onSurface,
-                      fontWeight:
-                          isSelected ? FontWeight.w600 : FontWeight.normal,
-                    ),
-                  ),
-                ),
-              ),
-            );
-          }).toList(),
+                );
+              }).toList(),
         ),
       ],
     );
@@ -436,7 +597,7 @@ By accepting, you acknowledge understanding of your HIPAA rights and our privacy
       backgroundColor: AppTheme.lightTheme.scaffoldBackgroundColor,
       appBar: AppBar(
         title: Text(
-          'Create Account',
+          _isEditMode ? 'Edit Profile' : 'Create Account',
           style: AppTheme.lightTheme.textTheme.titleLarge,
         ),
         backgroundColor: AppTheme.lightTheme.colorScheme.surface,
@@ -461,15 +622,18 @@ By accepting, you acknowledge understanding of your HIPAA rights and our privacy
               children: [
                 // Header
                 Text(
-                  'Join Health History',
+                  _isEditMode ? 'Update Your Profile' : 'Join Health History',
                   style: AppTheme.lightTheme.textTheme.headlineSmall,
                 ),
                 SizedBox(height: 1.h),
                 Text(
-                  'Create your secure digital health vault to store and manage your medical records safely.',
+                  _isEditMode
+                      ? 'Keep your health profile information up to date.'
+                      : 'Create your secure digital health vault to store and manage your medical records safely.',
                   style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
-                    color: AppTheme.lightTheme.colorScheme.onSurface
-                        .withValues(alpha: 0.7),
+                    color: AppTheme.lightTheme.colorScheme.onSurface.withValues(
+                      alpha: 0.7,
+                    ),
                   ),
                 ),
                 SizedBox(height: 4.h),
@@ -522,6 +686,7 @@ By accepting, you acknowledge understanding of your HIPAA rights and our privacy
                 TextFormField(
                   controller: _emailController,
                   focusNode: _emailFocus,
+                  enabled: !_isEditMode, // Disable in edit mode
                   decoration: InputDecoration(
                     labelText: 'Email Address',
                     hintText: 'Enter your email address',
@@ -542,8 +707,9 @@ By accepting, you acknowledge understanding of your HIPAA rights and our privacy
                     if (value == null || value.trim().isEmpty) {
                       return 'Please enter your email address';
                     }
-                    if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$')
-                        .hasMatch(value)) {
+                    if (!RegExp(
+                      r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$',
+                    ).hasMatch(value)) {
                       return 'Please enter a valid email address';
                     }
                     return null;
@@ -595,8 +761,10 @@ By accepting, you acknowledge understanding of your HIPAA rights and our privacy
                   onTap: _selectDateOfBirth,
                   child: Container(
                     width: double.infinity,
-                    padding:
-                        EdgeInsets.symmetric(horizontal: 4.w, vertical: 3.h),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 4.w,
+                      vertical: 3.h,
+                    ),
                     decoration: BoxDecoration(
                       color: AppTheme.lightTheme.colorScheme.surface,
                       borderRadius: BorderRadius.circular(8),
@@ -621,11 +789,18 @@ By accepting, you acknowledge understanding of your HIPAA rights and our privacy
                                 : 'Select Date of Birth',
                             style: AppTheme.lightTheme.textTheme.bodyMedium
                                 ?.copyWith(
-                              color: _selectedDateOfBirth != null
-                                  ? AppTheme.lightTheme.colorScheme.onSurface
-                                  : AppTheme.lightTheme.colorScheme.onSurface
-                                      .withValues(alpha: 0.6),
-                            ),
+                                  color:
+                                      _selectedDateOfBirth != null
+                                          ? AppTheme
+                                              .lightTheme
+                                              .colorScheme
+                                              .onSurface
+                                          : AppTheme
+                                              .lightTheme
+                                              .colorScheme
+                                              .onSurface
+                                              .withValues(alpha: 0.6),
+                                ),
                           ),
                         ),
                         CustomIconWidget(
@@ -662,208 +837,231 @@ By accepting, you acknowledge understanding of your HIPAA rights and our privacy
                 ),
                 SizedBox(height: 4.h),
 
-                // Password
-                TextFormField(
-                  controller: _passwordController,
-                  focusNode: _passwordFocus,
-                  decoration: InputDecoration(
-                    labelText: 'Password',
-                    hintText: 'Create a strong password',
-                    prefixIcon: Padding(
-                      padding: EdgeInsets.all(3.w),
-                      child: CustomIconWidget(
-                        iconName: 'lock',
-                        size: 5.w,
-                        color: AppTheme.lightTheme.colorScheme.onSurface
-                            .withValues(alpha: 0.6),
+                // Password fields only for registration
+                if (!_isEditMode) ...[
+                  // Password
+                  TextFormField(
+                    controller: _passwordController,
+                    focusNode: _passwordFocus,
+                    decoration: InputDecoration(
+                      labelText: 'Password',
+                      hintText: 'Create a strong password',
+                      prefixIcon: Padding(
+                        padding: EdgeInsets.all(3.w),
+                        child: CustomIconWidget(
+                          iconName: 'lock',
+                          size: 5.w,
+                          color: AppTheme.lightTheme.colorScheme.onSurface
+                              .withValues(alpha: 0.6),
+                        ),
                       ),
-                    ),
-                    suffixIcon: IconButton(
-                      icon: CustomIconWidget(
-                        iconName:
-                            _obscurePassword ? 'visibility' : 'visibility_off',
-                        size: 5.w,
-                        color: AppTheme.lightTheme.colorScheme.onSurface
-                            .withValues(alpha: 0.6),
-                      ),
-                      onPressed: () {
-                        setState(() {
-                          _obscurePassword = !_obscurePassword;
-                        });
-                      },
-                    ),
-                  ),
-                  obscureText: _obscurePassword,
-                  textInputAction: TextInputAction.next,
-                  onFieldSubmitted: (_) => _confirmPasswordFocus.requestFocus(),
-                  onChanged: (value) => setState(() {}),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Please enter a password';
-                    }
-                    if (value.length < 6) {
-                      return 'Password must be at least 6 characters';
-                    }
-                    return null;
-                  },
-                ),
-
-                // Password Strength Indicator
-                PasswordStrengthWidget(password: _passwordController.text),
-                SizedBox(height: 3.h),
-
-                // Confirm Password
-                TextFormField(
-                  controller: _confirmPasswordController,
-                  focusNode: _confirmPasswordFocus,
-                  decoration: InputDecoration(
-                    labelText: 'Confirm Password',
-                    hintText: 'Re-enter your password',
-                    prefixIcon: Padding(
-                      padding: EdgeInsets.all(3.w),
-                      child: CustomIconWidget(
-                        iconName: 'lock',
-                        size: 5.w,
-                        color: AppTheme.lightTheme.colorScheme.onSurface
-                            .withValues(alpha: 0.6),
-                      ),
-                    ),
-                    suffixIcon: IconButton(
-                      icon: CustomIconWidget(
-                        iconName: _obscureConfirmPassword
-                            ? 'visibility'
-                            : 'visibility_off',
-                        size: 5.w,
-                        color: AppTheme.lightTheme.colorScheme.onSurface
-                            .withValues(alpha: 0.6),
-                      ),
-                      onPressed: () {
-                        setState(() {
-                          _obscureConfirmPassword = !_obscureConfirmPassword;
-                        });
-                      },
-                    ),
-                  ),
-                  obscureText: _obscureConfirmPassword,
-                  textInputAction: TextInputAction.done,
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Please confirm your password';
-                    }
-                    if (value != _passwordController.text) {
-                      return 'Passwords do not match';
-                    }
-                    return null;
-                  },
-                ),
-                SizedBox(height: 4.h),
-
-                // Terms and Conditions
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Checkbox(
-                      value: _acceptTerms,
-                      onChanged: (value) {
-                        setState(() {
-                          _acceptTerms = value ?? false;
-                        });
-                      },
-                    ),
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: () {
+                      suffixIcon: IconButton(
+                        icon: CustomIconWidget(
+                          iconName:
+                              _obscurePassword
+                                  ? 'visibility'
+                                  : 'visibility_off',
+                          size: 5.w,
+                          color: AppTheme.lightTheme.colorScheme.onSurface
+                              .withValues(alpha: 0.6),
+                        ),
+                        onPressed: () {
                           setState(() {
-                            _acceptTerms = !_acceptTerms;
+                            _obscurePassword = !_obscurePassword;
                           });
                         },
-                        child: Padding(
-                          padding: EdgeInsets.only(top: 2.w),
-                          child: RichText(
-                            text: TextSpan(
-                              style: AppTheme.lightTheme.textTheme.bodySmall,
-                              children: [
-                                const TextSpan(text: 'I agree to the '),
-                                WidgetSpan(
-                                  child: GestureDetector(
-                                    onTap: _showTermsDialog,
-                                    child: Text(
-                                      'Terms & Conditions',
-                                      style: AppTheme
-                                          .lightTheme.textTheme.bodySmall
-                                          ?.copyWith(
-                                        color: AppTheme
-                                            .lightTheme.colorScheme.primary,
-                                        decoration: TextDecoration.underline,
+                      ),
+                    ),
+                    obscureText: _obscurePassword,
+                    textInputAction: TextInputAction.next,
+                    onFieldSubmitted:
+                        (_) => _confirmPasswordFocus.requestFocus(),
+                    onChanged: (value) => setState(() {}),
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Please enter a password';
+                      }
+                      if (value.length < 6) {
+                        return 'Password must be at least 6 characters';
+                      }
+                      return null;
+                    },
+                  ),
+
+                  // Password Strength Indicator
+                  PasswordStrengthWidget(password: _passwordController.text),
+                  SizedBox(height: 3.h),
+
+                  // Confirm Password
+                  TextFormField(
+                    controller: _confirmPasswordController,
+                    focusNode: _confirmPasswordFocus,
+                    decoration: InputDecoration(
+                      labelText: 'Confirm Password',
+                      hintText: 'Re-enter your password',
+                      prefixIcon: Padding(
+                        padding: EdgeInsets.all(3.w),
+                        child: CustomIconWidget(
+                          iconName: 'lock',
+                          size: 5.w,
+                          color: AppTheme.lightTheme.colorScheme.onSurface
+                              .withValues(alpha: 0.6),
+                        ),
+                      ),
+                      suffixIcon: IconButton(
+                        icon: CustomIconWidget(
+                          iconName:
+                              _obscureConfirmPassword
+                                  ? 'visibility'
+                                  : 'visibility_off',
+                          size: 5.w,
+                          color: AppTheme.lightTheme.colorScheme.onSurface
+                              .withValues(alpha: 0.6),
+                        ),
+                        onPressed: () {
+                          setState(() {
+                            _obscureConfirmPassword = !_obscureConfirmPassword;
+                          });
+                        },
+                      ),
+                    ),
+                    obscureText: _obscureConfirmPassword,
+                    textInputAction: TextInputAction.done,
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Please confirm your password';
+                      }
+                      if (value != _passwordController.text) {
+                        return 'Passwords do not match';
+                      }
+                      return null;
+                    },
+                  ),
+                  SizedBox(height: 4.h),
+                ],
+
+                // Terms and conditions only for registration
+                if (!_isEditMode) ...[
+                  // Terms and Conditions
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Checkbox(
+                        value: _acceptTerms,
+                        onChanged: (value) {
+                          setState(() {
+                            _acceptTerms = value ?? false;
+                          });
+                        },
+                      ),
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              _acceptTerms = !_acceptTerms;
+                            });
+                          },
+                          child: Padding(
+                            padding: EdgeInsets.only(top: 2.w),
+                            child: RichText(
+                              text: TextSpan(
+                                style: AppTheme.lightTheme.textTheme.bodySmall,
+                                children: [
+                                  const TextSpan(text: 'I agree to the '),
+                                  WidgetSpan(
+                                    child: GestureDetector(
+                                      onTap: _showTermsDialog,
+                                      child: Text(
+                                        'Terms & Conditions',
+                                        style: AppTheme
+                                            .lightTheme
+                                            .textTheme
+                                            .bodySmall
+                                            ?.copyWith(
+                                              color:
+                                                  AppTheme
+                                                      .lightTheme
+                                                      .colorScheme
+                                                      .primary,
+                                              decoration:
+                                                  TextDecoration.underline,
+                                            ),
                                       ),
                                     ),
                                   ),
-                                ),
-                                const TextSpan(text: ' and Privacy Policy'),
-                              ],
+                                  const TextSpan(text: ' and Privacy Policy'),
+                                ],
+                              ),
                             ),
                           ),
                         ),
                       ),
-                    ),
-                  ],
-                ),
-                SizedBox(height: 2.h),
+                    ],
+                  ),
+                  SizedBox(height: 2.h),
 
-                // HIPAA Compliance
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Checkbox(
-                      value: _acceptHipaa,
-                      onChanged: (value) {
-                        setState(() {
-                          _acceptHipaa = value ?? false;
-                        });
-                      },
-                    ),
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: () {
+                  // HIPAA Compliance
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Checkbox(
+                        value: _acceptHipaa,
+                        onChanged: (value) {
                           setState(() {
-                            _acceptHipaa = !_acceptHipaa;
+                            _acceptHipaa = value ?? false;
                           });
                         },
-                        child: Padding(
-                          padding: EdgeInsets.only(top: 2.w),
-                          child: RichText(
-                            text: TextSpan(
-                              style: AppTheme.lightTheme.textTheme.bodySmall,
-                              children: [
-                                const TextSpan(text: 'I acknowledge the '),
-                                WidgetSpan(
-                                  child: GestureDetector(
-                                    onTap: _showHipaaDialog,
-                                    child: Text(
-                                      'HIPAA Privacy Notice',
-                                      style: AppTheme
-                                          .lightTheme.textTheme.bodySmall
-                                          ?.copyWith(
-                                        color: AppTheme
-                                            .lightTheme.colorScheme.primary,
-                                        decoration: TextDecoration.underline,
+                      ),
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              _acceptHipaa = !_acceptHipaa;
+                            });
+                          },
+                          child: Padding(
+                            padding: EdgeInsets.only(top: 2.w),
+                            child: RichText(
+                              text: TextSpan(
+                                style: AppTheme.lightTheme.textTheme.bodySmall,
+                                children: [
+                                  const TextSpan(text: 'I acknowledge the '),
+                                  WidgetSpan(
+                                    child: GestureDetector(
+                                      onTap: _showHipaaDialog,
+                                      child: Text(
+                                        'HIPAA Privacy Notice',
+                                        style: AppTheme
+                                            .lightTheme
+                                            .textTheme
+                                            .bodySmall
+                                            ?.copyWith(
+                                              color:
+                                                  AppTheme
+                                                      .lightTheme
+                                                      .colorScheme
+                                                      .primary,
+                                              decoration:
+                                                  TextDecoration.underline,
+                                            ),
                                       ),
                                     ),
                                   ),
-                                ),
-                                const TextSpan(
-                                    text: ' and health data privacy practices'),
-                              ],
+                                  const TextSpan(
+                                    text: ' and health data privacy practices',
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         ),
                       ),
-                    ),
-                  ],
-                ),
-                SizedBox(height: 4.h),
+                    ],
+                  ),
+                  SizedBox(height: 4.h),
+                ],
 
-                // Create Account Button
+                // Create Account/Update Profile Button
                 SizedBox(
                   width: double.infinity,
                   height: 6.h,
@@ -871,59 +1069,67 @@ By accepting, you acknowledge understanding of your HIPAA rights and our privacy
                     onPressed:
                         _isFormValid() && !_isLoading ? _createAccount : null,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: _isFormValid()
-                          ? AppTheme.lightTheme.colorScheme.primary
-                          : AppTheme.lightTheme.colorScheme.onSurface
-                              .withValues(alpha: 0.3),
+                      backgroundColor:
+                          _isFormValid()
+                              ? AppTheme.lightTheme.colorScheme.primary
+                              : AppTheme.lightTheme.colorScheme.onSurface
+                                  .withValues(alpha: 0.3),
                       foregroundColor: Colors.white,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8),
                       ),
                     ),
-                    child: _isLoading
-                        ? SizedBox(
-                            width: 5.w,
-                            height: 5.w,
-                            child: const CircularProgressIndicator(
-                              color: Colors.white,
-                              strokeWidth: 2,
+                    child:
+                        _isLoading
+                            ? SizedBox(
+                              width: 5.w,
+                              height: 5.w,
+                              child: const CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 2,
+                              ),
+                            )
+                            : Text(
+                              _isEditMode ? 'Update Profile' : 'Create Account',
+                              style: AppTheme.lightTheme.textTheme.titleMedium
+                                  ?.copyWith(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                             ),
-                          )
-                        : Text(
-                            'Create Account',
-                            style: AppTheme.lightTheme.textTheme.titleMedium
-                                ?.copyWith(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
                   ),
                 ),
                 SizedBox(height: 3.h),
 
-                // Login Link
-                Center(
-                  child: GestureDetector(
-                    onTap: () => Navigator.pushReplacementNamed(
-                        context, '/login-screen'),
-                    child: RichText(
-                      text: TextSpan(
-                        style: AppTheme.lightTheme.textTheme.bodyMedium,
-                        children: [
-                          const TextSpan(text: 'Already have an account? '),
-                          TextSpan(
-                            text: 'Sign In',
-                            style: AppTheme.lightTheme.textTheme.bodyMedium
-                                ?.copyWith(
-                              color: AppTheme.lightTheme.colorScheme.primary,
-                              fontWeight: FontWeight.w600,
-                            ),
+                // Login Link (only for registration)
+                if (!_isEditMode) ...[
+                  Center(
+                    child: GestureDetector(
+                      onTap:
+                          () => Navigator.pushReplacementNamed(
+                            context,
+                            '/login-screen',
                           ),
-                        ],
+                      child: RichText(
+                        text: TextSpan(
+                          style: AppTheme.lightTheme.textTheme.bodyMedium,
+                          children: [
+                            const TextSpan(text: 'Already have an account? '),
+                            TextSpan(
+                              text: 'Sign In',
+                              style: AppTheme.lightTheme.textTheme.bodyMedium
+                                  ?.copyWith(
+                                    color:
+                                        AppTheme.lightTheme.colorScheme.primary,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
-                ),
+                ],
                 SizedBox(height: 4.h),
               ],
             ),
