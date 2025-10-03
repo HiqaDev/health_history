@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:sizer/sizer.dart';
 
 import '../../core/app_export.dart';
+import '../../services/auth_service.dart';
 import './widgets/blood_group_selector_widget.dart';
 import './widgets/emergency_contact_widget.dart';
 import './widgets/password_strength_widget.dart';
@@ -18,6 +19,7 @@ class UserRegistration extends StatefulWidget {
 class _UserRegistrationState extends State<UserRegistration> {
   final _formKey = GlobalKey<FormState>();
   final _scrollController = ScrollController();
+  final _authService = AuthService();
 
   // Form controllers
   final _fullNameController = TextEditingController();
@@ -29,6 +31,7 @@ class _UserRegistrationState extends State<UserRegistration> {
   // Form state
   DateTime? _selectedDateOfBirth;
   String? _selectedBloodGroup;
+  String? _selectedGender;
   String? _profilePhotoPath;
   List<Map<String, String>> _emergencyContacts = [];
   bool _acceptTerms = false;
@@ -115,16 +118,70 @@ class _UserRegistrationState extends State<UserRegistration> {
     });
 
     try {
-      // Simulate account creation
-      await Future.delayed(const Duration(seconds: 2));
+      // Check if email is already taken
+      final isEmailAvailable =
+          await _authService.isEmailAvailable(_emailController.text.trim());
 
-      if (mounted) {
-        // Show success animation
-        _showSuccessDialog();
+      if (!isEmailAvailable) {
+        if (mounted) {
+          _showErrorDialog(
+              'This email address is already in use. Please use a different email or try signing in.');
+        }
+        return;
+      }
+
+      // Prepare user metadata
+      final userData = {
+        'full_name': _fullNameController.text.trim(),
+        'role': 'patient',
+        'phone': _phoneController.text.trim(),
+        'gender': _selectedGender,
+        'date_of_birth': _selectedDateOfBirth?.toIso8601String().split('T')[0],
+        'blood_group': _selectedBloodGroup,
+        'emergency_contact_name': _emergencyContacts.isNotEmpty
+            ? _emergencyContacts[0]['name']
+            : null,
+        'emergency_contact_phone': _emergencyContacts.isNotEmpty
+            ? _emergencyContacts[0]['phone']
+            : null,
+      };
+
+      // Create account with Supabase Auth
+      final response = await _authService.signUp(
+        email: _emailController.text.trim(),
+        password: _passwordController.text,
+        userData: userData,
+      );
+
+      if (response.user != null) {
+        // Account created successfully, profile will be created by trigger
+        if (mounted) {
+          _showSuccessDialog();
+        }
+      } else {
+        throw Exception('Failed to create account. Please try again.');
       }
     } catch (e) {
       if (mounted) {
-        _showErrorDialog('Failed to create account. Please try again.');
+        String errorMessage = e.toString().replaceFirst('Exception: ', '');
+        if (errorMessage.contains('Sign-up failed:')) {
+          errorMessage = errorMessage.replaceFirst('Sign-up failed: ', '');
+        }
+
+        // Handle common Supabase errors
+        if (errorMessage.contains('User already registered')) {
+          errorMessage =
+              'This email is already registered. Please sign in instead.';
+        } else if (errorMessage.contains('Invalid email')) {
+          errorMessage = 'Please enter a valid email address.';
+        } else if (errorMessage.contains('Password should be at least')) {
+          errorMessage = 'Password should be at least 6 characters long.';
+        } else if (errorMessage.contains('Network')) {
+          errorMessage =
+              'Network error. Please check your connection and try again.';
+        }
+
+        _showErrorDialog(errorMessage);
       }
     } finally {
       if (mounted) {
@@ -170,6 +227,14 @@ class _UserRegistrationState extends State<UserRegistration> {
               style: AppTheme.lightTheme.textTheme.bodyMedium,
               textAlign: TextAlign.center,
             ),
+            SizedBox(height: 1.h),
+            Text(
+              'Please check your email to verify your account.',
+              style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
+                color: AppTheme.lightTheme.colorScheme.primary,
+              ),
+              textAlign: TextAlign.center,
+            ),
           ],
         ),
         actions: [
@@ -201,7 +266,7 @@ class _UserRegistrationState extends State<UserRegistration> {
               color: AppTheme.errorLight,
             ),
             SizedBox(width: 2.w),
-            const Text('Error'),
+            const Text('Registration Error'),
           ],
         ),
         content: Text(message),
@@ -308,6 +373,60 @@ By accepting, you acknowledge understanding of your HIPAA rights and our privacy
           ),
         ],
       ),
+    );
+  }
+
+  // Gender Selection Widget
+  Widget _buildGenderSelector() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Gender',
+          style: AppTheme.lightTheme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        SizedBox(height: 1.h),
+        Row(
+          children: ['Male', 'Female', 'Other'].map((gender) {
+            final isSelected = _selectedGender == gender;
+            return Expanded(
+              child: GestureDetector(
+                onTap: () => setState(() => _selectedGender = gender),
+                child: Container(
+                  margin: EdgeInsets.only(right: gender != 'Other' ? 2.w : 0),
+                  padding: EdgeInsets.symmetric(vertical: 2.h),
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? AppTheme.lightTheme.colorScheme.primary
+                            .withValues(alpha: 0.1)
+                        : AppTheme.lightTheme.colorScheme.surface,
+                    border: Border.all(
+                      color: isSelected
+                          ? AppTheme.lightTheme.colorScheme.primary
+                          : AppTheme.lightTheme.dividerColor,
+                      width: isSelected ? 2 : 1,
+                    ),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    gender,
+                    textAlign: TextAlign.center,
+                    style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
+                      color: isSelected
+                          ? AppTheme.lightTheme.colorScheme.primary
+                          : AppTheme.lightTheme.colorScheme.onSurface,
+                      fontWeight:
+                          isSelected ? FontWeight.w600 : FontWeight.normal,
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      ],
     );
   }
 
@@ -467,6 +586,10 @@ By accepting, you acknowledge understanding of your HIPAA rights and our privacy
                 ),
                 SizedBox(height: 3.h),
 
+                // Gender Selection
+                _buildGenderSelector(),
+                SizedBox(height: 3.h),
+
                 // Date of Birth
                 GestureDetector(
                   onTap: _selectDateOfBirth,
@@ -578,8 +701,8 @@ By accepting, you acknowledge understanding of your HIPAA rights and our privacy
                     if (value == null || value.isEmpty) {
                       return 'Please enter a password';
                     }
-                    if (value.length < 8) {
-                      return 'Password must be at least 8 characters';
+                    if (value.length < 6) {
+                      return 'Password must be at least 6 characters';
                     }
                     return null;
                   },
