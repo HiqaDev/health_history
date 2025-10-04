@@ -75,7 +75,7 @@ class _UserRegistrationState extends State<UserRegistration> {
           _fullNameController.text = profile['full_name'] ?? '';
           _emailController.text = profile['email'] ?? '';
           _phoneController.text = profile['phone'] ?? '';
-          _selectedGender = profile['gender'];
+          _selectedGender = _capitalizeGender(profile['gender']);
           _selectedBloodGroup = profile['blood_group'];
           if (profile['date_of_birth'] != null) {
             _selectedDateOfBirth = DateTime.parse(profile['date_of_birth']);
@@ -121,6 +121,7 @@ class _UserRegistrationState extends State<UserRegistration> {
       return _formKey.currentState?.validate() == true &&
           _selectedDateOfBirth != null &&
           _selectedBloodGroup != null &&
+          _selectedGender != null &&
           _emergencyContacts.any(
             (contact) =>
                 contact['name']!.isNotEmpty && contact['phone']!.isNotEmpty,
@@ -131,6 +132,7 @@ class _UserRegistrationState extends State<UserRegistration> {
     return _formKey.currentState?.validate() == true &&
         _selectedDateOfBirth != null &&
         _selectedBloodGroup != null &&
+        _selectedGender != null &&
         _emergencyContacts.any(
           (contact) =>
               contact['name']!.isNotEmpty && contact['phone']!.isNotEmpty,
@@ -234,7 +236,7 @@ class _UserRegistrationState extends State<UserRegistration> {
       'full_name': _fullNameController.text.trim(),
       'role': 'patient',
       'phone': _phoneController.text.trim(),
-      'gender': _selectedGender,
+      'gender': _selectedGender?.toLowerCase(),
       'date_of_birth': _selectedDateOfBirth?.toIso8601String().split('T')[0],
       'blood_group': _selectedBloodGroup,
       'emergency_contact_name':
@@ -265,7 +267,7 @@ class _UserRegistrationState extends State<UserRegistration> {
     final userData = {
       'full_name': _fullNameController.text.trim(),
       'phone': _phoneController.text.trim(),
-      'gender': _selectedGender,
+      'gender': _selectedGender?.toLowerCase(),
       'date_of_birth': _selectedDateOfBirth?.toIso8601String().split('T')[0],
       'blood_group': _selectedBloodGroup,
       'emergency_contact_name':
@@ -387,11 +389,15 @@ class _UserRegistrationState extends State<UserRegistration> {
               ElevatedButton(
                 onPressed: () {
                   Navigator.of(context).pop();
-                  Navigator.pushNamedAndRemoveUntil(
-                    context,
-                    '/health-dashboard',
-                    (route) => false,
-                  );
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (mounted) {
+                      Navigator.pushNamedAndRemoveUntil(
+                        context,
+                        '/health-dashboard',
+                        (route) => false,
+                      );
+                    }
+                  });
                 },
                 child: const Text('Get Started'),
               ),
@@ -527,13 +533,16 @@ By accepting, you acknowledge understanding of your HIPAA rights and our privacy
 
   // Gender Selection Widget
   Widget _buildGenderSelector() {
+    final hasError = _selectedGender == null && _isLoading == false && _formKey.currentState?.validate() == true;
+    
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Gender',
+          'Gender *',
           style: AppTheme.lightTheme.textTheme.titleSmall?.copyWith(
             fontWeight: FontWeight.w500,
+            color: hasError ? Colors.red : null,
           ),
         ),
         SizedBox(height: 1.h),
@@ -557,10 +566,12 @@ By accepting, you acknowledge understanding of your HIPAA rights and our privacy
                                 : AppTheme.lightTheme.colorScheme.surface,
                         border: Border.all(
                           color:
-                              isSelected
-                                  ? AppTheme.lightTheme.colorScheme.primary
-                                  : AppTheme.lightTheme.dividerColor,
-                          width: isSelected ? 2 : 1,
+                              hasError
+                                  ? Colors.red
+                                  : isSelected
+                                      ? AppTheme.lightTheme.colorScheme.primary
+                                      : AppTheme.lightTheme.dividerColor,
+                          width: isSelected || hasError ? 2 : 1,
                         ),
                         borderRadius: BorderRadius.circular(8),
                       ),
@@ -587,8 +598,34 @@ By accepting, you acknowledge understanding of your HIPAA rights and our privacy
                 );
               }).toList(),
         ),
+        if (hasError)
+          Padding(
+            padding: EdgeInsets.only(top: 1.h),
+            child: Text(
+              'Please select a gender',
+              style: TextStyle(
+                color: Colors.red,
+                fontSize: 12.sp,
+              ),
+            ),
+          ),
       ],
     );
+  }
+
+  // Helper method to capitalize gender from database
+  String? _capitalizeGender(String? gender) {
+    if (gender == null) return null;
+    switch (gender.toLowerCase()) {
+      case 'male':
+        return 'Male';
+      case 'female':
+        return 'Female';
+      case 'other':
+        return 'Other';
+      default:
+        return null;
+    }
   }
 
   @override
@@ -1105,11 +1142,16 @@ By accepting, you acknowledge understanding of your HIPAA rights and our privacy
                 if (!_isEditMode) ...[
                   Center(
                     child: GestureDetector(
-                      onTap:
-                          () => Navigator.pushReplacementNamed(
-                            context,
-                            '/login-screen',
-                          ),
+                      onTap: () {
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (mounted) {
+                            Navigator.pushReplacementNamed(
+                              context,
+                              '/login-screen',
+                            );
+                          }
+                        });
+                      },
                       child: RichText(
                         text: TextSpan(
                           style: AppTheme.lightTheme.textTheme.bodyMedium,

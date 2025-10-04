@@ -351,22 +351,35 @@ class _LoginScreenState extends State<LoginScreen>
         password: _passwordController.text.trim(),
       );
 
-      if (response.user != null && mounted) {
+      if (response.user != null) {
+        // Check if widget is still mounted before navigation
+        if (!mounted) return;
+        
         // Get user profile to determine navigation
         final profile = await authService.getUserProfile();
 
-        // Navigate to appropriate screen based on user role
-        if (profile != null) {
-          Navigator.of(context).pushReplacementNamed('/health-dashboard');
-        } else {
-          // First time user, go to profile setup
-          Navigator.of(context).pushReplacementNamed('/user-registration');
-        }
+        // Double check if widget is still mounted
+        if (!mounted) return;
+
+        // Use post frame callback to ensure navigation happens after current frame
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            // Navigate to appropriate screen based on user role
+            if (profile != null) {
+              Navigator.pushReplacementNamed(context, '/health-dashboard');
+            } else {
+              // First time user, go to profile setup
+              Navigator.pushReplacementNamed(context, '/user-registration');
+            }
+          }
+        });
       }
     } catch (error) {
-      setState(() {
-        _errorMessage = error.toString().replaceFirst('Exception: ', '');
-      });
+      if (mounted) {
+        setState(() {
+          _errorMessage = error.toString().replaceFirst('Exception: ', '');
+        });
+      }
     } finally {
       if (mounted) {
         setState(() {

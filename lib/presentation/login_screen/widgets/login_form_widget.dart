@@ -103,27 +103,36 @@ class LoginFormWidget extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Row(
-                  children: [
-                    Checkbox(
-                      value: rememberMe,
-                      onChanged: isLoading
-                          ? null
-                          : (value) => onRememberMeChanged(value ?? false),
-                    ),
-                    Text(
-                      'Remember me',
-                      style: AppTheme.lightTheme.textTheme.bodyMedium,
-                    ),
-                  ],
+                Flexible(
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Checkbox(
+                        value: rememberMe,
+                        onChanged: isLoading
+                            ? null
+                            : (value) => onRememberMeChanged(value ?? false),
+                      ),
+                      Flexible(
+                        child: Text(
+                          'Remember me',
+                          style: AppTheme.lightTheme.textTheme.bodyMedium,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                TextButton(
-                  onPressed: isLoading ? null : onForgotPassword,
-                  child: Text(
-                    'Forgot Password?',
-                    style: TextStyle(
-                      color: AppTheme.lightTheme.colorScheme.primary,
-                      fontWeight: FontWeight.w500,
+                Flexible(
+                  child: TextButton(
+                    onPressed: isLoading ? null : onForgotPassword,
+                    child: Text(
+                      'Forgot Password?',
+                      style: TextStyle(
+                        color: AppTheme.lightTheme.colorScheme.primary,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                 ),

@@ -26,9 +26,54 @@ class AuthService {
         password: password,
         data: userData,
       );
+      
+      // After successful signup, ensure user profile is created
+      if (response.user != null && response.session != null) {
+        await _ensureUserProfile(response.user!, userData);
+      }
+      
       return response;
     } catch (error) {
       throw Exception('Sign-up failed: $error');
+    }
+  }
+
+  // Ensure user profile exists (fallback for trigger)
+  Future<void> _ensureUserProfile(User user, Map<String, dynamic>? userData) async {
+    try {
+      // Check if profile already exists
+      final existingProfile = await _client
+          .from('user_profiles')
+          .select('id')
+          .eq('id', user.id)
+          .maybeSingle();
+
+      if (existingProfile == null) {
+        // Create profile manually if trigger didn't work
+        final profileData = {
+          'id': user.id,
+          'email': user.email!,
+          'full_name': userData?['full_name'] ?? user.userMetadata?['full_name'] ?? user.email!.split('@')[0],
+          'role': userData?['role'] ?? user.userMetadata?['role'] ?? 'patient',
+          'phone': userData?['phone'] ?? user.userMetadata?['phone'],
+          'gender': userData?['gender'] ?? user.userMetadata?['gender'],
+          'date_of_birth': userData?['date_of_birth'] ?? user.userMetadata?['date_of_birth'],
+          'blood_group': userData?['blood_group'] ?? user.userMetadata?['blood_group'],
+          'emergency_contact_name': userData?['emergency_contact_name'] ?? user.userMetadata?['emergency_contact_name'],
+          'emergency_contact_phone': userData?['emergency_contact_phone'] ?? user.userMetadata?['emergency_contact_phone'],
+          'created_at': DateTime.now().toIso8601String(),
+          'updated_at': DateTime.now().toIso8601String(),
+        };
+
+        await _client
+            .from('user_profiles')
+            .insert(profileData);
+        
+        print('User profile created manually for user: ${user.id}');
+      }
+    } catch (error) {
+      print('Error ensuring user profile: $error');
+      // Don't throw error here as it might prevent login
     }
   }
 
@@ -42,6 +87,12 @@ class AuthService {
         email: email,
         password: password,
       );
+      
+      // After successful signin, check if user profile exists
+      if (response.user != null && response.session != null) {
+        await _ensureUserProfile(response.user!, null);
+      }
+      
       return response;
     } catch (error) {
       throw Exception('Sign-in failed: $error');

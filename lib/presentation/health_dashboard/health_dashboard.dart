@@ -47,7 +47,11 @@ class _HealthDashboardState extends State<HealthDashboard>
 
   Future<void> _loadDashboardData() async {
     if (!_authService.isAuthenticated) {
-      Navigator.of(context).pushReplacementNamed('/login-screen');
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          Navigator.of(context).pushReplacementNamed('/login-screen');
+        }
+      });
       return;
     }
 
@@ -157,10 +161,14 @@ class _HealthDashboardState extends State<HealthDashboard>
     try {
       await _authService.signOut();
       if (mounted) {
-        Navigator.of(context).pushNamedAndRemoveUntil(
-          '/login-screen',
-          (route) => false,
-        );
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            Navigator.of(context).pushNamedAndRemoveUntil(
+              '/login-screen',
+              (route) => false,
+            );
+          }
+        });
       }
     } catch (error) {
       if (mounted) {

@@ -24,9 +24,12 @@ class EmptyStateWidget extends StatelessWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    return Center(
-      child: Padding(
-        padding: EdgeInsets.all(6.w),
+    return SingleChildScrollView(
+      padding: EdgeInsets.all(6.w),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          minHeight: MediaQuery.of(context).size.height - 200, // Account for app bar and bottom bar
+        ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -165,7 +168,9 @@ class EmptyStateWidget extends StatelessWidget {
 
           return Container(
             margin: EdgeInsets.only(bottom: 2.h),
+            padding: EdgeInsets.symmetric(horizontal: 2.w),
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
                   width: 12.w,
@@ -192,6 +197,8 @@ class EmptyStateWidget extends StatelessWidget {
                         style: theme.textTheme.titleSmall?.copyWith(
                           fontWeight: FontWeight.w600,
                         ),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
                       ),
                       SizedBox(height: 0.5.h),
                       Text(
@@ -199,6 +206,9 @@ class EmptyStateWidget extends StatelessWidget {
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: colorScheme.onSurface.withValues(alpha: 0.7),
                         ),
+                        overflow: TextOverflow.visible,
+                        softWrap: true,
+                        maxLines: 3,
                       ),
                     ],
                   ),

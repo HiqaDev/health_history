@@ -229,7 +229,7 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
                 if (_qrResultData!['patient']['blood_group'] != null)
                   _buildInfoRow('Blood Group', _qrResultData!['patient']['blood_group']),
                 if (_qrResultData!['patient']['gender'] != null)
-                  _buildInfoRow('Gender', _qrResultData!['patient']['gender']),
+                  _buildInfoRow('Gender', _capitalizeGender(_qrResultData!['patient']['gender'])),
               ],
             ),
             SizedBox(height: 4.w),
@@ -691,5 +691,20 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
         backgroundColor: Colors.red,
       ),
     );
+  }
+
+  // Helper method to capitalize gender for display
+  String _capitalizeGender(String? gender) {
+    if (gender == null) return '';
+    switch (gender.toLowerCase()) {
+      case 'male':
+        return 'Male';
+      case 'female':
+        return 'Female';
+      case 'other':
+        return 'Other';
+      default:
+        return gender.toUpperCase();
+    }
   }
 }

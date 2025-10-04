@@ -447,7 +447,7 @@ class _QuickActionsFabState extends State<QuickActionsFab>
                         'Doctor Notes',
                         'medical_information',
                         Colors.green[600]!,
-                        () => Navigator.pushNamed(context, '/doctor-notes'),
+                        () => _showFeatureComingSoon(context, 'Doctor Notes'),
                       ),
                     ),
                   ),
@@ -543,6 +543,15 @@ class _QuickActionsFabState extends State<QuickActionsFab>
           ),
         ),
       ],
+    );
+  }
+
+  void _showFeatureComingSoon(BuildContext context, String featureName) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$featureName feature coming soon!'),
+        duration: const Duration(seconds: 2),
+      ),
     );
   }
 }

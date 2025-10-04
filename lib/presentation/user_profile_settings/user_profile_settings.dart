@@ -72,13 +72,13 @@ class _UserProfileSettingsState extends State<UserProfileSettings> {
         _phoneController.text = profile['phone'] ?? '';
         _addressController.text = profile['address'] ?? '';
         // Handle emergency contact - try multiple field names for compatibility
-        _emergencyContactController.text = profile['emergency_contact'] ?? 
-                                         profile['emergency_contact_name'] ?? '';
+        _emergencyContactController.text = profile['emergency_contact_name'] ?? 
+                                         profile['emergency_contact'] ?? '';
         _allergiesController.text = profile['allergies'] ?? '';
         _medicationsController.text = profile['medications'] ?? '';
         _medicalConditionsController.text = profile['medical_conditions'] ?? '';
         _selectedBloodGroup = profile['blood_group'] ?? 'Not specified';
-        _selectedGender = profile['gender'] ?? 'Not specified';
+        _selectedGender = _capitalizeGender(profile['gender']) ?? 'Not specified';
 
         if (profile['date_of_birth'] != null) {
           try {
@@ -110,13 +110,13 @@ class _UserProfileSettingsState extends State<UserProfileSettings> {
         'full_name': _nameController.text.trim(),
         'phone': _phoneController.text.trim(),
         'address': _addressController.text.trim(),
-        'emergency_contact': _emergencyContactController.text.trim(),
+        'emergency_contact_name': _emergencyContactController.text.trim(),
         'allergies': _allergiesController.text.trim(),
         'medications': _medicationsController.text.trim(),
         'medical_conditions': _medicalConditionsController.text.trim(),
         'blood_group':
             _selectedBloodGroup == 'Not specified' ? null : _selectedBloodGroup,
-        'gender': _selectedGender == 'Not specified' ? null : _selectedGender,
+        'gender': _selectedGender == 'Not specified' ? null : _selectedGender.toLowerCase(),
         'date_of_birth': _selectedDateOfBirth?.toIso8601String().split('T')[0], // Keep only date part
         'updated_at': DateTime.now().toIso8601String(),
       };
@@ -129,22 +129,41 @@ class _UserProfileSettingsState extends State<UserProfileSettings> {
 
       await _authService.updateUserProfile(profileData);
 
-      setState(() => _isSaving = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Profile updated successfully'),
-          backgroundColor: Colors.green,
-        ),
-      );
+      if (mounted) {
+        setState(() => _isSaving = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Profile updated successfully'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
     } catch (e) {
       print('Error saving profile: $e'); // Debug log
-      setState(() => _isSaving = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error saving profile: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      if (mounted) {
+        setState(() => _isSaving = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error saving profile: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  // Helper method to capitalize gender from database
+  String? _capitalizeGender(String? gender) {
+    if (gender == null) return null;
+    switch (gender.toLowerCase()) {
+      case 'male':
+        return 'Male';
+      case 'female':
+        return 'Female';
+      case 'other':
+        return 'Other';
+      default:
+        return 'Not specified';
     }
   }
 
@@ -587,11 +606,17 @@ class _UserProfileSettingsState extends State<UserProfileSettings> {
             onPressed: () async {
               Navigator.pop(context);
               await _authService.signOut();
-              Navigator.pushNamedAndRemoveUntil(
-                context,
-                '/login-screen',
-                (route) => false,
-              );
+              if (mounted) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted) {
+                    Navigator.pushNamedAndRemoveUntil(
+                      context,
+                      '/login-screen',
+                      (route) => false,
+                    );
+                  }
+                });
+              }
             },
             child: Text(
               'Sign Out',
