@@ -54,7 +54,7 @@ class QRCodeService {
           .select('*')
           .eq('user_id', user.id)
           .eq('is_active', true)
-          .single();
+          .maybeSingle(); // Use maybeSingle instead of single to handle no records
 
       // Generate unique QR code ID
       final qrCodeId = _generateQRCodeId();
@@ -66,40 +66,40 @@ class QRCodeService {
         'generated_at': DateTime.now().toIso8601String(),
         'qr_code_id': qrCodeId,
         'patient': {
-          'name': userProfile['full_name'],
+          'name': userProfile['full_name'] ?? 'N/A',
           'age': _calculateAge(userProfile['date_of_birth']),
-          'blood_group': userProfile['blood_group'],
-          'gender': userProfile['gender'],
-          'phone': userProfile['phone_number'],
+          'blood_group': userProfile['blood_group'] ?? 'Unknown',
+          'gender': userProfile['gender'] ?? 'Not specified',
+          'phone': userProfile['phone'] ?? userProfile['phone_number'] ?? 'N/A',
         },
         'emergency_contacts': emergencyContacts.map((contact) => {
-          'name': contact['name'],
-          'relationship': contact['relationship'],
-          'phone': contact['phone_number'],
+          'name': contact['name'] ?? 'N/A',
+          'relationship': contact['relationship'] ?? 'N/A',
+          'phone': contact['phone_number'] ?? contact['phone'] ?? 'N/A',
           'is_primary': contact['is_primary'] ?? false,
         }).toList(),
         'medical_info': {
           'allergies': allergies.map((allergy) => {
-            'allergen': allergy['description'],
-            'severity': allergy['severity'],
-            'reaction': allergy['notes'],
+            'allergen': allergy['description'] ?? 'N/A',
+            'severity': allergy['severity'] ?? 'Unknown',
+            'reaction': allergy['notes'] ?? 'N/A',
           }).toList(),
           'critical_medications': criticalMedications.map((med) => {
-            'name': med['medication_name'],
-            'dosage': med['dosage'],
-            'frequency': med['frequency'],
-            'purpose': med['purpose'],
+            'name': med['medication_name'] ?? med['name'] ?? 'N/A',
+            'dosage': med['dosage'] ?? 'N/A',
+            'frequency': med['frequency'] ?? 'N/A',
+            'purpose': med['purpose'] ?? 'N/A',
           }).toList(),
           'medical_alerts': medicalAlerts.map((alert) => {
-            'condition': alert['description'],
-            'severity': alert['severity'],
-            'notes': alert['notes'],
+            'condition': alert['description'] ?? 'N/A',
+            'severity': alert['severity'] ?? 'Unknown',
+            'notes': alert['notes'] ?? 'N/A',
           }).toList(),
         },
         'insurance': healthInsurance != null ? {
-          'provider': healthInsurance['provider_name'],
-          'policy_number': healthInsurance['policy_number'],
-          'scheme_type': healthInsurance['scheme_type'],
+          'provider': healthInsurance['provider_name'] ?? 'N/A',
+          'policy_number': healthInsurance['policy_number'] ?? 'N/A',
+          'scheme_type': healthInsurance['scheme_type'] ?? 'N/A',
         } : null,
         'emergency_instructions': _getEmergencyInstructions(),
       };
@@ -120,7 +120,24 @@ class QRCodeService {
         'display_data': emergencyData,
       };
     } catch (e) {
-      throw Exception('Failed to generate emergency QR code: $e');
+      print('Error generating emergency QR code: $e'); // Debug log
+      
+      // Provide specific error messages
+      if (e.toString().contains('user_profiles')) {
+        throw Exception('Unable to load user profile. Please ensure your profile is complete.');
+      } else if (e.toString().contains('emergency_contacts')) {
+        throw Exception('Error loading emergency contacts. Please check your emergency contact settings.');
+      } else if (e.toString().contains('health_events')) {
+        throw Exception('Error loading health records. Please try again.');
+      } else if (e.toString().contains('medications')) {
+        throw Exception('Error loading medication data. Please verify your medication list.');
+      } else if (e.toString().contains('qr_codes')) {
+        throw Exception('Error saving QR code. Please try again.');
+      } else if (e.toString().contains('network')) {
+        throw Exception('Network error. Please check your internet connection.');
+      } else {
+        throw Exception('Failed to generate emergency QR code. Please ensure all required profile information is filled out.');
+      }
     }
   }
 

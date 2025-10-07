@@ -41,24 +41,19 @@ class MedicalRecordsService {
       final fileSize = await file.length();
       final mimeType = _getMimeType(file.path);
 
-      // Create document record
+      // Create document record aligned to 'medical_documents' schema
       final documentData = {
         'user_id': userId,
-        'doctor_id': doctorId,
-        'timeline_event_id': timelineEventId,
         'title': title,
         'description': description,
-        'file_category': fileCategory,
+        'document_type': _mapCategoryToDocumentType(fileCategory),
         'file_path': filePath,
         'file_name': fileName,
         'file_size': fileSize,
         'mime_type': mimeType,
-        'document_date': documentDate.toIso8601String().split('T')[0],
-        'hospital_name': hospitalName,
-        'doctor_name': doctorName,
-        'department': department,
         'tags': tags,
-        'is_critical': isCritical,
+        'date_of_document': documentDate.toIso8601String().split('T')[0],
+        'healthcare_provider': hospitalName ?? doctorName,
       };
 
       final documentResponse = await _healthService.uploadMedicalDocument(documentData);
@@ -66,7 +61,7 @@ class MedicalRecordsService {
       // Queue for offline sync
       await _healthService.queueForOfflineSync(
         userId: userId,
-        tableName: 'medical_documents_enhanced',
+        tableName: 'medical_documents',
         recordId: documentResponse['id'],
         action: 'INSERT',
         data: documentData,
@@ -81,10 +76,11 @@ class MedicalRecordsService {
   // Get file download URL
   Future<String> getFileDownloadUrl(String filePath) async {
     try {
-      final url = _client.storage
+      // Buckets are private by default; create a short-lived signed URL
+      final signed = await _client.storage
           .from('medical-documents')
-          .getPublicUrl(filePath);
-      return url;
+          .createSignedUrl(filePath, 60 * 60); // 1 hour
+      return signed;
     } catch (error) {
       throw Exception('Failed to get download URL: $error');
     }
@@ -102,23 +98,39 @@ class MedicalRecordsService {
     List<String>? tags,
   }) async {
     try {
-      var documents = await _healthService.getMedicalDocuments(
-        userId,
-        category: category,
-        isCritical: isCritical,
-      );
+      var docs = await _healthService.getMedicalDocuments(userId);
+
+      // Map DB schema to UI schema used by widgets/screens
+      List<Map<String, dynamic>> documents = await Future.wait(docs.map((doc) async {
+        final filePath = doc['file_path'] as String?;
+        String? url;
+        if (filePath != null && filePath.isNotEmpty) {
+          url = await getFileDownloadUrl(filePath);
+        }
+        return {
+          'id': doc['id'] as String,
+          'title': doc['title'] as String,
+          'description': doc['description'],
+          'type': _mapDocumentTypeToUi(doc['document_type'] as String),
+          'date': (doc['date_of_document'] as String?) ?? (doc['created_at'] as String),
+          'provider': doc['healthcare_provider'],
+          'tags': (doc['tags'] as List?)?.cast<String>() ?? <String>[],
+          'isFavorite': (doc['is_favorite'] as bool?) ?? false,
+          'fileUrl': url,
+        };
+      }));
 
       // Apply additional filters
       if (fromDate != null) {
         documents = documents.where((doc) {
-          final docDate = DateTime.parse(doc['document_date']);
+          final docDate = DateTime.parse(doc['date']);
           return docDate.isAfter(fromDate) || docDate.isAtSameMomentAs(fromDate);
         }).toList();
       }
 
       if (toDate != null) {
         documents = documents.where((doc) {
-          final docDate = DateTime.parse(doc['document_date']);
+          final docDate = DateTime.parse(doc['date']);
           return docDate.isBefore(toDate) || docDate.isAtSameMomentAs(toDate);
         }).toList();
       }
@@ -130,8 +142,9 @@ class MedicalRecordsService {
       }
 
       if (doctorName != null) {
+        // Fallback: if provider string contains doctor name
         documents = documents.where((doc) =>
-            doc['doctor_name']?.toString().toLowerCase().contains(doctorName.toLowerCase()) == true
+            doc['provider']?.toString().toLowerCase().contains(doctorName.toLowerCase()) == true
         ).toList();
       }
 
@@ -157,24 +170,45 @@ class MedicalRecordsService {
     DateTime? toDate,
   }) async {
     try {
-      var documents = await _healthService.searchMedicalRecords(userId, query);
+      var results = await _healthService.searchMedicalRecords(userId, query);
+      // Map to UI shape
+      final mapped = await Future.wait(results.map((doc) async {
+        final filePath = doc['file_path'] as String?;
+        String? url;
+        if (filePath != null && filePath.isNotEmpty) {
+          url = await getFileDownloadUrl(filePath);
+        }
+        return {
+          'id': doc['id'] as String,
+          'title': doc['title'] as String,
+          'description': doc['description'],
+          'type': _mapDocumentTypeToUi(doc['document_type'] as String),
+          'date': (doc['date_of_document'] as String?) ?? (doc['created_at'] as String),
+          'provider': doc['healthcare_provider'],
+          'tags': (doc['tags'] as List?)?.cast<String>() ?? <String>[],
+          'isFavorite': (doc['is_favorite'] as bool?) ?? false,
+          'fileUrl': url,
+        };
+      }));
 
-      // Apply category filter
+      // Apply optional filters locally
+      List<Map<String, dynamic>> documents = mapped;
       if (category != null) {
-        documents = documents.where((doc) => doc['file_category'] == category).toList();
+        documents = documents.where((doc) =>
+            _mapUiTypeToCategoryId(doc['type'] as String) == category
+        ).toList();
       }
 
-      // Apply date filters
       if (fromDate != null) {
         documents = documents.where((doc) {
-          final docDate = DateTime.parse(doc['document_date']);
+          final docDate = DateTime.parse(doc['date']);
           return docDate.isAfter(fromDate) || docDate.isAtSameMomentAs(fromDate);
         }).toList();
       }
 
       if (toDate != null) {
         documents = documents.where((doc) {
-          final docDate = DateTime.parse(doc['document_date']);
+          final docDate = DateTime.parse(doc['date']);
           return docDate.isBefore(toDate) || docDate.isAtSameMomentAs(toDate);
         }).toList();
       }
@@ -198,7 +232,7 @@ class MedicalRecordsService {
   Future<void> toggleDocumentFavorite(String documentId, bool isFavorite) async {
     try {
       await _client
-          .from('medical_documents_enhanced')
+          .from('medical_documents')
           .update({'is_favorite': isFavorite})
           .eq('id', documentId);
     } catch (error) {
@@ -210,7 +244,7 @@ class MedicalRecordsService {
   Future<void> updateDocumentTags(String documentId, List<String> tags) async {
     try {
       await _client
-          .from('medical_documents_enhanced')
+          .from('medical_documents')
           .update({'tags': tags})
           .eq('id', documentId);
     } catch (error) {
@@ -228,7 +262,7 @@ class MedicalRecordsService {
 
       // Delete document record
       await _client
-          .from('medical_documents_enhanced')
+          .from('medical_documents')
           .delete()
           .eq('id', documentId);
     } catch (error) {
@@ -239,7 +273,7 @@ class MedicalRecordsService {
   // Get document statistics
   Future<Map<String, dynamic>> getDocumentStatistics(String userId) async {
     try {
-      final documents = await _healthService.getMedicalDocuments(userId);
+  final documents = await _healthService.getMedicalDocuments(userId);
       
       final stats = <String, dynamic>{
         'total_documents': documents.length,
@@ -255,11 +289,11 @@ class MedicalRecordsService {
 
       for (final doc in documents) {
         // Count by category
-        final category = doc['file_category'] as String;
-        stats['by_category'][category] = (stats['by_category'][category] ?? 0) + 1;
+  final category = _mapDocumentTypeToUi(doc['document_type'] as String);
+  stats['by_category'][category] = (stats['by_category'][category] ?? 0) + 1;
 
         // Count by month
-        final docDate = DateTime.parse(doc['document_date']);
+  final docDate = DateTime.parse((doc['date_of_document'] as String?) ?? (doc['created_at'] as String));
         final monthKey = '${docDate.year}-${docDate.month.toString().padLeft(2, '0')}';
         stats['by_month'][monthKey] = (stats['by_month'][monthKey] ?? 0) + 1;
 
@@ -269,12 +303,10 @@ class MedicalRecordsService {
         }
 
         // Count critical documents
-        if (doc['is_critical'] == true) {
-          stats['critical_documents']++;
-        }
+        // No critical flag in base schema; skip
 
         // Count recent uploads
-        final createdAt = DateTime.parse(doc['created_at']);
+  final createdAt = DateTime.parse(doc['created_at']);
         if (createdAt.isAfter(thirtyDaysAgo)) {
           stats['recent_uploads']++;
         }
@@ -401,5 +433,65 @@ class MedicalRecordsService {
         'description': 'Hospital discharge summaries and treatment plans'
       },
     ];
+  }
+
+  // Map app UI category to DB enum document_type
+  String _mapCategoryToDocumentType(String category) {
+    switch (category) {
+      case 'prescription':
+        return 'prescription';
+      case 'lab_report':
+        return 'lab_report';
+      case 'insurance':
+        return 'insurance';
+      case 'vaccination_record':
+        return 'vaccination';
+      case 'xray':
+      case 'mri':
+      case 'ct_scan':
+      case 'ultrasound':
+      case 'ecg':
+        return 'medical_image';
+      case 'bill':
+        return 'other';
+      default:
+        return 'other';
+    }
+  }
+
+  // Map DB enum to UI friendly type labels used by widgets
+  String _mapDocumentTypeToUi(String dbType) {
+    switch (dbType) {
+      case 'prescription':
+        return 'Prescription';
+      case 'lab_report':
+        return 'Lab Report';
+      case 'medical_image':
+        return 'Imaging';
+      case 'insurance':
+        return 'Insurance';
+      case 'vaccination':
+        return 'Vaccination';
+      default:
+        return 'Document';
+    }
+  }
+
+  String _mapUiTypeToCategoryId(String uiType) {
+    switch (uiType.toLowerCase()) {
+      case 'prescription':
+        return 'prescription';
+      case 'lab report':
+        return 'lab_report';
+      case 'imaging':
+        // generic bucket for various image-like categories
+        return 'medical_image';
+      case 'insurance':
+        return 'insurance';
+      case 'vaccination':
+        return 'vaccination_record';
+      default:
+        return 'other';
+    }
   }
 }

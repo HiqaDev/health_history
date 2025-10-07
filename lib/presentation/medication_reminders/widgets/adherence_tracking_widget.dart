@@ -94,7 +94,7 @@ class AdherenceTrackingWidget extends StatelessWidget {
                   barTouchData: BarTouchData(
                     enabled: true,
                     touchTooltipData: BarTouchTooltipData(
-                      tooltipBgColor: theme.colorScheme.surface,
+                      getTooltipColor: (group) => theme.colorScheme.surface,
                       tooltipBorder: BorderSide(
                         color: theme.colorScheme.outline,
                       ),

@@ -29,14 +29,15 @@ A comprehensive Flutter application for managing personal health records, medica
 - **Backend**: Supabase (PostgreSQL + Auth + Storage)
 - **Database**: PostgreSQL with Row Level Security (RLS)
 - **Authentication**: Supabase Auth
-- **File Storage**: Supabase Storage
-- **QR Code**: qr_flutter, mobile_scanner
-- **State Management**: Provider pattern
+**File Storage**: Supabase Storage
+**QR Code**: qr_flutter, mobile_scanner
+**State Management**: Provider pattern
+**Supabase**: Supabase (PostgreSQL + Auth + Storage)
 - **Platform**: Android & iOS
   
   ```sh
-  brew install supabase/tap/supabase-beta
-  brew link --overwrite supabase-beta
+  brew install supabase/tap/supabase
+  brew link --overwrite supabase
   ```
   
   To upgrade:

@@ -26,27 +26,63 @@ class _EmergencyCardState extends State<EmergencyCard> {
 
   Future<void> _loadEmergencyData() async {
     try {
-      if (!_authService.isAuthenticated) return;
+      if (!_authService.isAuthenticated) {
+        // Show a graceful placeholder when not logged in
+        setState(() {
+          emergencyInfo = {
+            "bloodType": "Not specified",
+            "allergies": ["None reported"],
+            "emergencyContacts": <Map<String, dynamic>>[],
+            "medicalConditions": ["None reported"],
+            "currentMedications": ["None reported"],
+          };
+          _isLoading = false;
+        });
+        return;
+      }
       
       final userId = _authService.currentUser!.id;
       final userProfile = await _authService.getUserProfile();
       final emergencyContacts = await _healthService.getEmergencyContacts(userId);
       final medications = await _healthService.getMedications(userId);
+      final healthEvents = await _healthService.getHealthEvents(userId, limit: 100);
+      
+      // Derive allergies and conditions from health events to reflect real data
+      final List<String> allergies = healthEvents
+          .where((e) => (e['event_type'] as String?)?.toLowerCase() == 'allergy')
+          .map((e) => (e['description'] as String?)?.trim())
+          .whereType<String>()
+          .where((s) => s.isNotEmpty)
+          .toList();
+
+      final List<String> conditions = healthEvents
+          .where((e) {
+            final t = (e['event_type'] as String?)?.toLowerCase();
+            return t == 'condition' || t == 'diagnosis';
+          })
+          .map((e) =>
+              ((e['title'] as String?)?.trim()?.isNotEmpty == true
+                      ? e['title'] as String?
+                      : (e['description'] as String?))
+                  ?.trim())
+          .whereType<String>()
+          .where((s) => s.isNotEmpty)
+          .toList();
       
       setState(() {
         emergencyInfo = {
-          "bloodType": userProfile?['blood_type'] ?? 'Not specified',
-          "allergies": userProfile?['allergies'] != null 
-              ? List<String>.from(userProfile!['allergies']) 
-              : ['None reported'],
+          // Use actual schema field name
+          "bloodType": userProfile?['blood_group'] ?? 'Not specified',
+          // Pull allergies from health_events instead of profile
+          "allergies": allergies.isNotEmpty ? allergies : ['None reported'],
           "emergencyContacts": emergencyContacts.map((contact) => {
             "name": contact['name'],
             "relationship": contact['relationship'],
-            "phone": contact['phone_number'],
+            // Schema uses 'phone'
+            "phone": contact['phone'],
           }).toList(),
-          "medicalConditions": userProfile?['medical_conditions'] != null
-              ? List<String>.from(userProfile!['medical_conditions'])
-              : ['None reported'],
+          // Pull medical conditions/diagnoses from health_events
+          "medicalConditions": conditions.isNotEmpty ? conditions : ['None reported'],
           "currentMedications": medications.map((med) => 
               "${med['name']} ${med['dosage'] ?? ''}").toList(),
         };

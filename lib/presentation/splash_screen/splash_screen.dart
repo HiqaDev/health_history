@@ -159,17 +159,17 @@ class _SplashScreenState extends State<SplashScreen>
   /// Navigate to appropriate screen based on user status
   void _navigateToNextScreen() {
     if (!mounted) return;
-
-    if (_isUserAuthenticated) {
-      // Authenticated users go directly to dashboard
-      Navigator.pushReplacementNamed(context, '/health-dashboard');
-    } else if (!_hasCompletedOnboarding) {
-      // New users see onboarding flow first
-      Navigator.pushReplacementNamed(context, '/onboarding-flow');
-    } else {
-      // Returning users who have completed onboarding but aren't logged in go to login
-      Navigator.pushReplacementNamed(context, '/login-screen');
-    }
+    // Schedule navigation post-frame to avoid layout/hit-test issues on web
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (_isUserAuthenticated) {
+        Navigator.pushReplacementNamed(context, '/health-dashboard');
+      } else if (!_hasCompletedOnboarding) {
+        Navigator.pushReplacementNamed(context, '/onboarding-flow');
+      } else {
+        Navigator.pushReplacementNamed(context, '/login-screen');
+      }
+    });
   }
 
   /// Handle initialization errors

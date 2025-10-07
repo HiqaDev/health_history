@@ -189,6 +189,7 @@ class _UserProfileSettingsState extends State<UserProfileSettings> {
   Widget build(BuildContext context) {
     return WillPopScope(
       onWillPop: () async {
+        // If saving, prevent navigation to avoid crashes
         if (_isSaving) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -202,7 +203,9 @@ class _UserProfileSettingsState extends State<UserProfileSettings> {
       },
       child: Scaffold(
         backgroundColor: AppTheme.backgroundLight,
-        appBar: const CustomAppBar(title: 'Profile Settings'),
+        appBar: const CustomAppBar(
+          title: 'Profile Settings',
+        ),
         body: _isLoading
             ? const Center(child: CircularProgressIndicator())
             : Form(
@@ -212,40 +215,54 @@ class _UserProfileSettingsState extends State<UserProfileSettings> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _buildProfilePictureSection(),
-                      SizedBox(height: 24.sp),
-                      _buildPersonalInformation(),
-                      SizedBox(height: 24.sp),
-                      _buildMedicalInformation(),
-                      SizedBox(height: 24.sp),
-                      _buildEmergencyContact(),
-                      SizedBox(height: 24.sp),
-                      _buildAccountSettings(),
-                      SizedBox(height: 32.sp),
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          onPressed: _isSaving ? null : _saveProfile,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppTheme.primaryLight,
-                            padding: EdgeInsets.symmetric(vertical: 16.sp),
-                          ),
-                          child: _isSaving
-                              ? const CircularProgressIndicator(color: Colors.white)
-                              : Text(
-                                  'Save Changes',
-                                  style: TextStyle(
-                                    fontSize: 16.sp,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.white,
-                                  ),
-                                ),
+                    // Profile Picture Section
+                    _buildProfilePictureSection(),
+                    SizedBox(height: 24.sp),
+
+                    // Personal Information
+                    _buildPersonalInformation(),
+                    SizedBox(height: 24.sp),
+
+                    // Medical Information
+                    _buildMedicalInformation(),
+                    SizedBox(height: 24.sp),
+
+                    // Emergency Contact
+                    _buildEmergencyContact(),
+                    SizedBox(height: 24.sp),
+
+                    // Account Settings
+                    _buildAccountSettings(),
+                    SizedBox(height: 32.sp),
+
+                    // Save Button
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: _isSaving ? null : _saveProfile,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.primaryLight,
+                          padding: EdgeInsets.symmetric(vertical: 16.sp),
                         ),
+                        child: _isSaving
+                            ? const CircularProgressIndicator(
+                                color: Colors.white)
+                            : Text(
+                                'Save Changes',
+                                style: TextStyle(
+                                  fontSize: 16.sp,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.white,
+                                ),
+                              ),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
+            ),
+          ),
+        ),
       ),
     );
   }

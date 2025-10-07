@@ -194,7 +194,8 @@ class _HealthTrendsCardState extends State<HealthTrendsCard> {
                 getTitlesWidget: (double value, TitleMeta meta) {
                   if (value.toInt() >= 0 && value.toInt() < data.length) {
                     return SideTitleWidget(
-                      axisSide: meta.axisSide,
+                      meta: meta,
+                      space: 8,
                       child: Text(
                         data[value.toInt()]["date"] as String,
                         style:
@@ -205,7 +206,7 @@ class _HealthTrendsCardState extends State<HealthTrendsCard> {
                       ),
                     );
                   }
-                  return const Text('');
+                  return const SizedBox.shrink();
                 },
               ),
             ),

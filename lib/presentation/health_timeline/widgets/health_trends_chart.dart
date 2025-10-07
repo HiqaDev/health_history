@@ -187,8 +187,7 @@ class _HealthTrendsChartState extends State<HealthTrendsChart> {
         lineTouchData: LineTouchData(
           enabled: true,
           touchTooltipData: LineTouchTooltipData(
-            tooltipBgColor: AppTheme.lightTheme.colorScheme.surface,
-            tooltipRoundedRadius: 8,
+            getTooltipColor: (spot) => AppTheme.lightTheme.colorScheme.surface,
             getTooltipItems: (List<LineBarSpot> touchedSpots) {
               return touchedSpots.map((LineBarSpot touchedSpot) {
                 return LineTooltipItem(
@@ -388,7 +387,8 @@ class _HealthTrendsChartState extends State<HealthTrendsChart> {
     }
 
     return SideTitleWidget(
-      axisSide: meta.axisSide,
+      meta: meta,
+      space: 8,
       child: text,
     );
   }

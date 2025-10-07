@@ -1,11 +1,8 @@
-import 'package:flutter/material.d      final userProfile = await _authService.getUserProfile();rt';
-import 'package:sizer/sizer.dart';
+import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../services/doctor_notes_service.dart';
 import '../../services/auth_service.dart';
-import '../../widgets/custom_app_bar.dart';
-import '../../theme/app_theme.dart';
-import '../../core/app_export.dart';
+ 
 
 class DoctorNotesScreen extends StatefulWidget {
   const DoctorNotesScreen({Key? key}) : super(key: key);
@@ -32,7 +29,7 @@ class _DoctorNotesScreenState extends State<DoctorNotesScreen> {
     setState(() => _isLoading = true);
     
     // Check user role
-    final userProfile = await _authService.getCurrentUserProfile();
+  final userProfile = await _authService.getUserProfile();
     if (userProfile != null) {
       _isDoctor = userProfile['user_role'] == 'doctor';
     }
@@ -167,9 +164,9 @@ class _DoctorNotesScreenState extends State<DoctorNotesScreen> {
 
   Widget _buildNoteCard(Map<String, dynamic> note) {
     final visitDate = DateTime.parse(note['visit_date']);
-    final patientName = _isDoctor 
-        ? note['user_profiles']?['full_name'] ?? 'Unknown Patient'
-        : 'You';
+  final patientName = _isDoctor
+    ? ((note['user_profiles']?['full_name'] as String?) ?? 'Unknown Patient')
+    : 'You';
     final doctorInfo = note['doctor_profiles'];
     final specialization = doctorInfo?['specialization']?[0] ?? 'General';
 
@@ -340,7 +337,7 @@ class _DoctorNotesScreenState extends State<DoctorNotesScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (context) => DragScrollableSheet(
+      builder: (context) => DraggableScrollableSheet(
         initialChildSize: 0.9,
         maxChildSize: 0.95,
         minChildSize: 0.5,

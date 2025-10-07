@@ -4,8 +4,8 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 import 'dart:convert';
 import '../secure_sharing_screen.dart';
-import '../../services/secure_sharing_service.dart';
-import '../../theme/app_theme.dart';
+import '../../../services/secure_sharing_service.dart';
+import '../../../theme/app_theme.dart';
 
 class CreateShareDialog extends StatefulWidget {
   const CreateShareDialog({Key? key}) : super(key: key);
@@ -47,7 +47,7 @@ class _CreateShareDialogState extends State<CreateShareDialog> {
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: AppTheme.primaryColor,
+                color: AppTheme.primaryLight,
                 borderRadius: const BorderRadius.only(
                   topLeft: Radius.circular(8),
                   topRight: Radius.circular(8),
@@ -988,10 +988,10 @@ class SharedResourceViewer extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 12),
       child: Text(
         title,
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 16,
           fontWeight: FontWeight.bold,
-          color: AppTheme.primaryColor,
+          color: AppTheme.primaryLight,
         ),
       ),
     );

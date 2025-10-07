@@ -382,27 +382,18 @@ class HealthService {
     }
   }
 
-  // Medical Documents Enhanced Operations
+  // Medical Documents Operations (aligned to existing schema)
   Future<List<Map<String, dynamic>>> getMedicalDocuments(String userId,
       {String? category, bool? isCritical}) async {
     try {
       var query = _client
-          .from('medical_documents_enhanced')
-          .select('''
-            *, 
-            doctor_profiles!doctor_id(full_name, specialization),
-            timeline_events!timeline_event_id(title, event_date)
-          ''')
+          .from('medical_documents')
+          .select()
           .eq('user_id', userId);
 
-      if (category != null) {
-        query = query.eq('file_category', category);
-      }
-      if (isCritical != null) {
-        query = query.eq('is_critical', isCritical);
-      }
+      // category and isCritical are not part of base schema; ignore if provided
 
-      final response = await query.order('document_date', ascending: false);
+      final response = await query.order('date_of_document', ascending: false);
       return List<Map<String, dynamic>>.from(response);
     } catch (error) {
       throw Exception('Failed to fetch medical documents: $error');
@@ -413,7 +404,7 @@ class HealthService {
       Map<String, dynamic> document) async {
     try {
       final response = await _client
-          .from('medical_documents_enhanced')
+          .from('medical_documents')
           .insert(document)
           .select()
           .single();
@@ -686,11 +677,12 @@ class HealthService {
   Future<List<Map<String, dynamic>>> searchMedicalRecords(
       String userId, String query) async {
     try {
+      // Basic search over fields available in core schema
       final response = await _client
-          .from('medical_documents_enhanced')
+          .from('medical_documents')
           .select()
           .eq('user_id', userId)
-          .textSearch('title,description,ocr_text', query);
+          .ilike('title', '%$query%');
 
       return List<Map<String, dynamic>>.from(response);
     } catch (error) {

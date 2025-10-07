@@ -450,11 +450,14 @@ class _CustomBottomBarState extends State<CustomBottomBar>
       // Navigate to the corresponding route
       final route = CustomBottomBar._navigationItems[index].route;
       if (route.isNotEmpty) {
-        Navigator.pushNamedAndRemoveUntil(
-          context,
-          route,
-          (route) => false,
-        );
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          Navigator.pushNamedAndRemoveUntil(
+            context,
+            route,
+            (route) => false,
+          );
+        });
       }
     }
   }

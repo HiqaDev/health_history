@@ -804,7 +804,17 @@ class _QRCodeGenerationScreenState extends State<QRCodeGenerationScreen>
       _showSuccess('QR Code generated successfully!');
     } catch (e) {
       Navigator.of(context).pop(); // Close loading dialog
-      _showError('Failed to generate QR code: $e');
+      
+      // Extract meaningful error message for mobile users
+      String errorMessage = e.toString();
+      if (errorMessage.contains('Exception: ')) {
+        errorMessage = errorMessage.replaceFirst('Exception: ', '');
+      }
+      
+      _showError(errorMessage);
+      
+      // Log the full error for debugging
+      print('QR Generation Error: $e');
     }
   }
 
