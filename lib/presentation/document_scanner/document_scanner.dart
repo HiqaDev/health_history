@@ -10,6 +10,7 @@ import '../../theme/app_theme.dart';
 import '../../widgets/custom_app_bar.dart';
 import '../../services/auth_service.dart';
 import '../../services/document_service.dart';
+import '../../services/health_service.dart';
 import './widgets/camera_preview_widget.dart';
 import './widgets/document_grid_widget.dart';
 import './widgets/scan_controls_widget.dart';
@@ -34,6 +35,7 @@ class _DocumentScannerState extends State<DocumentScanner>
   final ImagePicker _imagePicker = ImagePicker();
   final _authService = AuthService();
   final _documentService = DocumentService();
+  final _healthService = HealthService();
   List<Map<String, dynamic>> _scannedDocuments = [];
 
   @override
@@ -420,23 +422,27 @@ class _DocumentScannerState extends State<DocumentScanner>
       final fileSizeBytes = await file.length();
       final fileSizeMB = (fileSizeBytes / (1024 * 1024)).toStringAsFixed(1);
       
-      // Create document record
+      // Build document record (use valid enum for document_type)
+      final ext = extension.toLowerCase();
+      final mimeType = _extToMime(ext);
       final documentData = {
         'user_id': userId,
         'title': _generateDocumentTitle() ?? 'Unknown Document',
         'description': 'Scanned ${_scanMode} document',
-        'document_type': _scanMode,
+        'document_type': _mapScanModeToDbType(_scanMode),
         'file_path': storagePath,
+        'file_name': fileName,
         'file_size': fileSizeBytes,
+        'mime_type': mimeType,
         'date_of_document': DateTime.now().toIso8601String(),
         'source': source,
-        'scan_mode': _scanMode ?? 'document',
+        'scan_mode': _scanMode,
         'status': 'active',
         'tags': [_scanMode, source],
       };
-      
-      // Save document record to database
-      final savedDocument = await _documentService.addDocumentRecord(documentData);
+
+      // Save document record via robust uploader (handles missing columns)
+      final savedDocument = await _healthService.uploadMedicalDocument(documentData);
       
       // Add to local list for immediate UI update
       final localDocument = {
@@ -499,6 +505,34 @@ class _DocumentScannerState extends State<DocumentScanner>
         return 'Prescription\nDr. Smith - Cardiology\nLisinopril 10mg - Take once daily\nQuantity: 30 tablets\nRefills: 2';
       default:
         return 'Document text extracted successfully.';
+    }
+  }
+
+  String _extToMime(String ext) {
+    switch (ext) {
+      case 'pdf':
+        return 'application/pdf';
+      case 'jpg':
+      case 'jpeg':
+        return 'image/jpeg';
+      case 'png':
+        return 'image/png';
+      default:
+        return 'application/octet-stream';
+    }
+  }
+
+  String _mapScanModeToDbType(String mode) {
+    switch (mode) {
+      case 'prescription':
+        return 'prescription';
+      case 'document':
+      case 'id':
+      case 'gallery':
+      case 'camera':
+        return 'other';
+      default:
+        return 'other';
     }
   }
 

@@ -504,7 +504,7 @@ class _HealthDashboardState extends State<HealthDashboard>
             ),
           SizedBox(height: 1.h),
           Text(
-            'Role: ${userProfile!['role']?.toString().toUpperCase() ?? 'PATIENT'}',
+            'Role: ${(userProfile!['user_role'] ?? userProfile!['role'] ?? 'PATIENT').toString().toUpperCase()}',
             style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
               color: AppTheme.lightTheme.colorScheme.primary,
               fontWeight: FontWeight.w500,

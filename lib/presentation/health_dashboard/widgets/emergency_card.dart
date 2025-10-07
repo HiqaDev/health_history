@@ -41,21 +41,21 @@ class _EmergencyCardState extends State<EmergencyCard> {
         return;
       }
       
-      final userId = _authService.currentUser!.id;
-      final userProfile = await _authService.getUserProfile();
-      final emergencyContacts = await _healthService.getEmergencyContacts(userId);
-      final medications = await _healthService.getMedications(userId);
-      final healthEvents = await _healthService.getHealthEvents(userId, limit: 100);
+  final userId = _authService.currentUser!.id;
+  final userProfile = await _authService.getUserProfile();
+  final emergencyContacts = await _healthService.getEmergencyContacts(userId);
+  final medications = await _healthService.getMedications(userId);
+  final healthEvents = await _healthService.getHealthEvents(userId, limit: 100);
       
       // Derive allergies and conditions from health events to reflect real data
-      final List<String> allergies = healthEvents
+      final List<String> eventAllergies = healthEvents
           .where((e) => (e['event_type'] as String?)?.toLowerCase() == 'allergy')
           .map((e) => (e['description'] as String?)?.trim())
           .whereType<String>()
           .where((s) => s.isNotEmpty)
           .toList();
 
-      final List<String> conditions = healthEvents
+      final List<String> eventConditions = healthEvents
           .where((e) {
             final t = (e['event_type'] as String?)?.toLowerCase();
             return t == 'condition' || t == 'diagnosis';
@@ -68,23 +68,86 @@ class _EmergencyCardState extends State<EmergencyCard> {
           .whereType<String>()
           .where((s) => s.isNotEmpty)
           .toList();
+
+      // Fallback to profile stored arrays if present
+  List<String> profileAllergies = [];
+  final rawAllergies = userProfile?['allergies'];
+  if (rawAllergies is List) {
+    profileAllergies = rawAllergies
+    .map((e) => (e ?? '').toString())
+    .map((s) => s.trim())
+    .where((s) => s.isNotEmpty)
+    .toList();
+  } else if (rawAllergies is String) {
+        profileAllergies = rawAllergies
+            .split(',')
+            .map((e) => e.trim())
+            .where((s) => s.isNotEmpty)
+            .toList();
+      }
+
+  List<String> profileConditions = [];
+  final rawConditions = userProfile?['medical_conditions'];
+  if (rawConditions is List) {
+    profileConditions = rawConditions
+    .map((e) => (e ?? '').toString())
+    .map((s) => s.trim())
+    .where((s) => s.isNotEmpty)
+    .toList();
+  } else if (rawConditions is String) {
+        profileConditions = rawConditions
+            .split(',')
+            .map((e) => e.trim())
+            .where((s) => s.isNotEmpty)
+            .toList();
+      }
+
+      // Merge and de-duplicate
+      final allergies = {
+        ...eventAllergies,
+        ...profileAllergies,
+      }.toList();
+      final conditions = {
+        ...eventConditions,
+        ...profileConditions,
+      }.toList();
       
       setState(() {
+        // Build contacts list with fallback from profile if table is empty
+        final List<Map<String, dynamic>> contactsList = emergencyContacts
+            .map<Map<String, dynamic>>((contact) => {
+                  "name": contact['name'],
+                  "relationship": contact['relationship'] ?? 'Contact',
+                  "phone": contact['phone'] ?? contact['phone_number'] ?? contact['contact_phone'] ?? contact['mobile'] ?? '',
+                })
+            .toList();
+
+        if (contactsList.isEmpty) {
+          final profileContactName = userProfile?['emergency_contact_name'];
+          final profileContactPhone = userProfile?['emergency_contact_phone'] ?? userProfile?['phone'];
+          if (profileContactName != null || profileContactPhone != null) {
+            contactsList.add({
+              "name": (profileContactName ?? 'Primary Contact').toString(),
+              "relationship": 'Primary',
+              "phone": (profileContactPhone ?? '').toString(),
+            });
+          }
+        }
+
         emergencyInfo = {
-          // Use actual schema field name
-          "bloodType": userProfile?['blood_group'] ?? 'Not specified',
+          // Prefer blood_group, fallback to blood_type if legacy
+          "bloodType": (userProfile?['blood_group'] ?? userProfile?['blood_type'] ?? 'Not specified').toString(),
           // Pull allergies from health_events instead of profile
           "allergies": allergies.isNotEmpty ? allergies : ['None reported'],
-          "emergencyContacts": emergencyContacts.map((contact) => {
-            "name": contact['name'],
-            "relationship": contact['relationship'],
-            // Schema uses 'phone'
-            "phone": contact['phone'],
-          }).toList(),
+          "emergencyContacts": contactsList,
           // Pull medical conditions/diagnoses from health_events
           "medicalConditions": conditions.isNotEmpty ? conditions : ['None reported'],
-          "currentMedications": medications.map((med) => 
-              "${med['name']} ${med['dosage'] ?? ''}").toList(),
+          "currentMedications": medications.map((med) {
+            final medName = med['name'] ?? med['medication_name'] ?? med['title'] ?? 'Medication';
+            final dose = med['dosage'] ?? med['dose'] ?? med['dosage_mg'] ?? '';
+            final s = dose.toString().trim();
+            return s.isEmpty ? medName.toString() : "$medName $s";
+          }).toList(),
         };
         _isLoading = false;
       });
@@ -240,11 +303,18 @@ class _EmergencyCardState extends State<EmergencyCard> {
             ),
           ),
           SizedBox(height: 1.h),
-          ...(emergencyInfo!["emergencyContacts"] as List<Map<String, dynamic>>)
-              .map(
-                (contact) => _buildEmergencyContact(context, contact),
-              )
-              .toList(),
+      ...(() {
+      final contactsDynamic =
+        (emergencyInfo!["emergencyContacts"] as List?) ?? const [];
+      final contacts = contactsDynamic
+        .map<Map<String, dynamic>>(
+          (c) => Map<String, dynamic>.from(c as Map))
+        .toList();
+      return contacts
+        .map((contact) =>
+          _buildEmergencyContact(context, contact))
+        .toList();
+      }()),
           SizedBox(height: 2.h),
           Row(
             children: [

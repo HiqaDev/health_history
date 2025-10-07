@@ -44,7 +44,7 @@ class AuthService {
       // Check if profile already exists
       final existingProfile = await _client
           .from('user_profiles')
-          .select('id')
+          .select()
           .eq('id', user.id)
           .maybeSingle();
 
@@ -54,6 +54,8 @@ class AuthService {
           'id': user.id,
           'email': user.email!,
           'full_name': userData?['full_name'] ?? user.userMetadata?['full_name'] ?? user.email!.split('@')[0],
+          // Prefer canonical 'user_role' column; also mirror into legacy 'role' for compatibility
+          'user_role': userData?['role'] ?? user.userMetadata?['role'] ?? 'patient',
           'role': userData?['role'] ?? user.userMetadata?['role'] ?? 'patient',
           'phone': userData?['phone'] ?? user.userMetadata?['phone'],
           'gender': userData?['gender'] ?? user.userMetadata?['gender'],
@@ -70,6 +72,42 @@ class AuthService {
             .insert(profileData);
         
         print('User profile created manually for user: ${user.id}');
+      } else {
+        // Backfill any missing fields without overwriting non-null values
+        final updates = <String, dynamic>{};
+        dynamic pick(String key) => userData?[key] ?? user.userMetadata?[key];
+
+        // List of fields we want to backfill if null
+        const keys = [
+          'full_name',
+          'role',
+          'phone',
+          'gender',
+          'date_of_birth',
+          'blood_group',
+          'emergency_contact_name',
+          'emergency_contact_phone',
+          'profile_picture_url',
+        ];
+
+        for (final k in keys) {
+          if (existingProfile[k] == null) {
+            final v = pick(k);
+            if (v != null && v.toString().isNotEmpty) {
+              // Ensure enum role is valid string
+              updates[k] = v;
+            }
+          }
+        }
+
+        if (updates.isNotEmpty) {
+          updates['updated_at'] = DateTime.now().toIso8601String();
+          await _client
+              .from('user_profiles')
+              .update(updates)
+              .eq('id', user.id);
+          print('User profile backfilled for user: ${user.id} with: $updates');
+        }
       }
     } catch (error) {
       print('Error ensuring user profile: $error');
@@ -249,7 +287,8 @@ class AuthService {
 
     try {
       final profile = await getUserProfile();
-      return profile?['role'] ?? 'patient';
+      // Prefer 'user_role' if present; fallback to legacy 'role' then default
+      return profile?['user_role'] ?? profile?['role'] ?? 'patient';
     } catch (error) {
       return 'patient'; // Default role
     }

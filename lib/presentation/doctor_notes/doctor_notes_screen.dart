@@ -28,10 +28,11 @@ class _DoctorNotesScreenState extends State<DoctorNotesScreen> {
   Future<void> _loadUserRoleAndNotes() async {
     setState(() => _isLoading = true);
     
-    // Check user role
-  final userProfile = await _authService.getUserProfile();
+    // Check user role (prefer 'user_role', fallback to legacy 'role')
+    final userProfile = await _authService.getUserProfile();
     if (userProfile != null) {
-      _isDoctor = userProfile['user_role'] == 'doctor';
+      final role = (userProfile['user_role'] ?? userProfile['role'])?.toString();
+      _isDoctor = role == 'doctor';
     }
     
     await _loadNotes();

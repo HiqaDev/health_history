@@ -5,8 +5,13 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:sizer/sizer.dart';
+import 'dart:typed_data';
+import 'dart:io' show File; // only used on non-web paths
 
 import '../../../core/app_export.dart';
+import '../../../services/auth_service.dart';
+import '../../../services/document_service.dart';
+import '../../../services/health_service.dart';
 
 class DocumentUploadFab extends StatefulWidget {
   final ValueChanged<Map<String, dynamic>>? onDocumentUploaded;
@@ -30,6 +35,9 @@ class _DocumentUploadFabState extends State<DocumentUploadFab>
   List<CameraDescription>? _cameras;
   CameraController? _cameraController;
   final ImagePicker _imagePicker = ImagePicker();
+  final _authService = AuthService();
+  final _documentService = DocumentService();
+  final _healthService = HealthService();
 
   @override
   void initState() {
@@ -198,11 +206,13 @@ class _DocumentUploadFabState extends State<DocumentUploadFab>
 
       final XFile? image = await _cameraController!.takePicture();
       if (image != null) {
-        _processUploadedDocument({
+        final Uint8List bytes = await image.readAsBytes();
+        await _processUploadedDocument({
           'type': 'scan',
-          'path': image.path,
-          'name': 'Scanned Document ${DateTime.now().millisecondsSinceEpoch}',
+          'path': image.path.endsWith('.jpg') || image.path.endsWith('.jpeg') ? image.path : '${image.path}.jpg',
+          'name': 'Scanned-Document-${DateTime.now().millisecondsSinceEpoch}.jpg',
           'mimeType': 'image/jpeg',
+          'bytes': bytes,
         });
       }
     } catch (e) {
@@ -225,11 +235,13 @@ class _DocumentUploadFabState extends State<DocumentUploadFab>
       );
 
       if (image != null) {
-        _processUploadedDocument({
+        final Uint8List bytes = await image.readAsBytes();
+        await _processUploadedDocument({
           'type': 'photo',
-          'path': image.path,
-          'name': 'Photo ${DateTime.now().millisecondsSinceEpoch}',
+          'path': image.path.endsWith('.jpg') || image.path.endsWith('.jpeg') ? image.path : '${image.path}.jpg',
+          'name': 'Photo-${DateTime.now().millisecondsSinceEpoch}.jpg',
           'mimeType': 'image/jpeg',
+          'bytes': bytes,
         });
       }
     } catch (e) {
@@ -249,7 +261,7 @@ class _DocumentUploadFabState extends State<DocumentUploadFab>
 
       if (result != null && result.files.isNotEmpty) {
         final file = result.files.first;
-        _processUploadedDocument({
+        await _processUploadedDocument({
           'type': 'file',
           'path': file.path,
           'name': file.name,
@@ -313,44 +325,115 @@ class _DocumentUploadFabState extends State<DocumentUploadFab>
     }
   }
 
-  void _processUploadedDocument(Map<String, dynamic> documentData) {
-    // Simulate document processing and categorization
-    final processedDocument = {
-      ...documentData,
-      'id': DateTime.now().millisecondsSinceEpoch.toString(),
-      'uploadDate': DateTime.now().toIso8601String(),
-      'category': _categorizeDocument(documentData['name'] as String),
-      'status': 'processing',
-    };
-
-    widget.onDocumentUploaded?.call(processedDocument);
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            CustomIconWidget(
-              iconName: 'cloud_upload',
-              color: Colors.white,
-              size: 16,
-            ),
-            SizedBox(width: 2.w),
-            Expanded(
-              child: Text('Document uploaded: ${documentData['name']}'),
-            ),
-          ],
+  Future<void> _processUploadedDocument(Map<String, dynamic> documentData) async {
+    // Auth required
+    if (!_authService.isAuthenticated) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Please sign in to upload documents'),
+          backgroundColor: AppTheme.errorLight,
         ),
-        backgroundColor: AppTheme.successLight,
-        behavior: SnackBarBehavior.floating,
-        action: SnackBarAction(
-          label: 'View',
-          textColor: Colors.white,
-          onPressed: () {
-            // Navigate to document preview
-          },
+      );
+      return;
+    }
+
+    // Prepare a safe display name and title
+  String? rawName = (documentData['name'] as String?)?.trim();
+    if ((rawName == null || rawName.isEmpty) && documentData['path'] is String) {
+      final p = (documentData['path'] as String);
+      rawName = p.split('/').last.split('\\').last;
+    }
+    rawName ??= 'Document_${DateTime.now().millisecondsSinceEpoch}';
+    final title = rawName.replaceFirst(RegExp(r'\.[^.]+$'), '');
+
+    try {
+      final userId = _authService.currentUser!.id;
+  final String uiLabel = _categorizeDocument(rawName);
+      final String dbType = _mapUiLabelToDbType(uiLabel);
+  final String mimeType = (documentData['mimeType'] as String?) ?? _getMimeType(rawName.split('.').last);
+
+      // Show uploading snackbar
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(children: [
+            SizedBox(
+              width: 18,
+              height: 18,
+              child: const CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(Colors.white)),
+            ),
+            SizedBox(width: 8),
+            Expanded(child: Text('Uploading "$title"...')),
+          ]),
+          backgroundColor: AppTheme.accentLight,
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(minutes: 1),
         ),
-      ),
-    );
+      );
+
+      // Upload to storage
+      final Uint8List? bytes = documentData['bytes'] as Uint8List?;
+      final String? path = documentData['path'] as String?;
+      String storagePath;
+      if (bytes != null) {
+        storagePath = await _documentService.uploadDocumentFromBytes(userId, bytes, rawName);
+      } else if (path != null && path.isNotEmpty) {
+        storagePath = await _documentService.uploadDocument(userId, path, rawName);
+      } else {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: const Text('No file content to upload'), backgroundColor: AppTheme.errorLight),
+        );
+        return;
+      }
+
+      // Compute file size if possible
+      int? fileSize;
+      if (bytes != null) {
+        fileSize = bytes.length;
+      } else if (!kIsWeb && path != null && path.isNotEmpty) {
+        try { fileSize = await File(path).length(); } catch (_) {}
+      }
+
+      // Build DB record data
+      final Map<String, dynamic> record = {
+        'user_id': userId,
+        'title': title,
+        'description': documentData['description'] ?? 'Uploaded via file picker',
+        'document_type': dbType,
+        'file_path': storagePath,
+        'file_name': rawName,
+        'file_size': fileSize,
+        'mime_type': mimeType,
+        'tags': [uiLabel],
+        'date_of_document': DateTime.now().toIso8601String().split('T').first,
+        'healthcare_provider': null,
+      };
+
+      final saved = await _healthService.uploadMedicalDocument(record);
+
+      // Success UI
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              CustomIconWidget(iconName: 'cloud_upload', color: Colors.white, size: 16),
+              SizedBox(width: 8),
+              Expanded(child: Text('Document uploaded: $title')),
+            ],
+          ),
+          backgroundColor: AppTheme.successLight,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+
+      widget.onDocumentUploaded?.call(saved);
+    } catch (e) {
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to upload: $e'), backgroundColor: AppTheme.errorLight),
+      );
+    }
   }
 
   String _categorizeDocument(String fileName) {
@@ -394,6 +477,26 @@ class _DocumentUploadFabState extends State<DocumentUploadFab>
         return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
       default:
         return 'application/octet-stream';
+    }
+  }
+
+  // Map UI label to DB enum name
+  String _mapUiLabelToDbType(String ui) {
+    switch (ui.toLowerCase()) {
+      case 'prescription':
+        return 'prescription';
+      case 'lab report':
+        return 'lab_report';
+      case 'imaging':
+        return 'medical_image';
+      case 'insurance':
+        return 'insurance';
+      case 'vaccination':
+        return 'vaccination';
+      case 'bill':
+        return 'other';
+      default:
+        return 'other';
     }
   }
 

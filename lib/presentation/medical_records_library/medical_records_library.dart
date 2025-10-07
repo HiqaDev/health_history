@@ -592,7 +592,7 @@ class _MedicalRecordsLibraryState extends State<MedicalRecordsLibrary>
     
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Document "${document['title']}" uploaded successfully'),
+        content: Text('Document "${document['title'] ?? document['name'] ?? 'Untitled'}" uploaded successfully'),
         backgroundColor: AppTheme.successLight,
         duration: const Duration(seconds: 3),
       ),

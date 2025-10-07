@@ -2,7 +2,9 @@ import '../services/supabase_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class HealthService {
-  final _client = SupabaseService.instance.client;
+  final SupabaseClient _client;
+
+  HealthService({SupabaseClient? client}) : _client = client ?? SupabaseService.instance.client;
 
   // Health Metrics Operations
   Future<List<Map<String, dynamic>>> getHealthMetrics(String userId) async {
@@ -393,7 +395,8 @@ class HealthService {
 
       // category and isCritical are not part of base schema; ignore if provided
 
-      final response = await query.order('date_of_document', ascending: false);
+      // Order by created_at for schema compatibility. Some databases may not have date_of_document.
+      final response = await query.order('created_at', ascending: false);
       return List<Map<String, dynamic>>.from(response);
     } catch (error) {
       throw Exception('Failed to fetch medical documents: $error');
@@ -403,16 +406,33 @@ class HealthService {
   Future<Map<String, dynamic>> uploadMedicalDocument(
       Map<String, dynamic> document) async {
     try {
-      final response = await _client
-          .from('medical_documents')
-          .insert(document)
-          .select()
-          .single();
-
-      return response;
+      try {
+        final response = await insertMedicalDocument(document);
+        return response;
+      } on PostgrestException catch (pgErr) {
+        // Handle environments where 'date_of_document' column doesn't exist
+        final msg = pgErr.message?.toLowerCase() ?? '';
+        if (pgErr.code == '42703' || msg.contains('date_of_document')) {
+          final fallback = Map<String, dynamic>.from(document);
+          fallback.remove('date_of_document');
+          final response = await insertMedicalDocument(fallback);
+          return response;
+        }
+        rethrow;
+      }
     } catch (error) {
       throw Exception('Failed to upload medical document: $error');
     }
+  }
+
+  // Separated for testability: override in tests to simulate DB behavior
+  Future<Map<String, dynamic>> insertMedicalDocument(Map<String, dynamic> document) async {
+    final response = await _client
+        .from('medical_documents')
+        .insert(document)
+        .select()
+        .single();
+    return response;
   }
 
   // QR Code Operations

@@ -4,8 +4,12 @@ import '../services/supabase_service.dart';
 import '../services/health_service.dart';
 
 class MedicalRecordsService {
-  final _client = SupabaseService.instance.client;
-  final _healthService = HealthService();
+  final SupabaseClient _client;
+  final HealthService _healthService;
+
+  MedicalRecordsService({SupabaseClient? client, HealthService? healthService})
+      : _client = client ?? SupabaseService.instance.client,
+        _healthService = healthService ?? HealthService();
 
   // File upload with enhanced categorization
   Future<Map<String, dynamic>> uploadMedicalFile({
@@ -107,12 +111,13 @@ class MedicalRecordsService {
         if (filePath != null && filePath.isNotEmpty) {
           url = await getFileDownloadUrl(filePath);
         }
+        final dateString = (doc['date_of_document'] as String?) ?? (doc['created_at'] as String);
         return {
           'id': doc['id'] as String,
           'title': doc['title'] as String,
           'description': doc['description'],
           'type': _mapDocumentTypeToUi(doc['document_type'] as String),
-          'date': (doc['date_of_document'] as String?) ?? (doc['created_at'] as String),
+          'date': dateString,
           'provider': doc['healthcare_provider'],
           'tags': (doc['tags'] as List?)?.cast<String>() ?? <String>[],
           'isFavorite': (doc['is_favorite'] as bool?) ?? false,
@@ -122,22 +127,26 @@ class MedicalRecordsService {
 
       // Apply additional filters
       if (fromDate != null) {
+        final start = DateTime(fromDate.year, fromDate.month, fromDate.day);
         documents = documents.where((doc) {
-          final docDate = DateTime.parse(doc['date']);
-          return docDate.isAfter(fromDate) || docDate.isAtSameMomentAs(fromDate);
+          DateTime docDate;
+          try { docDate = DateTime.parse(doc['date']); } catch (_) { return false; }
+          return !docDate.isBefore(start); // >= start of day
         }).toList();
       }
 
       if (toDate != null) {
+        final end = DateTime(toDate.year, toDate.month, toDate.day, 23, 59, 59, 999);
         documents = documents.where((doc) {
-          final docDate = DateTime.parse(doc['date']);
-          return docDate.isBefore(toDate) || docDate.isAtSameMomentAs(toDate);
+          DateTime docDate;
+          try { docDate = DateTime.parse(doc['date']); } catch (_) { return false; }
+          return !docDate.isAfter(end); // <= end of day
         }).toList();
       }
 
       if (hospitalName != null) {
         documents = documents.where((doc) =>
-            doc['hospital_name']?.toString().toLowerCase().contains(hospitalName.toLowerCase()) == true
+            doc['provider']?.toString().toLowerCase().contains(hospitalName.toLowerCase()) == true
         ).toList();
       }
 
@@ -171,6 +180,18 @@ class MedicalRecordsService {
   }) async {
     try {
       var results = await _healthService.searchMedicalRecords(userId, query);
+
+      // If a category filter is provided, first filter by the raw DB enum/type if present
+      if (category != null) {
+        final wanted = category.toLowerCase();
+        results = results.where((doc) {
+          final raw = (doc['document_type'] as String?)?.toLowerCase();
+          if (raw != null && raw.isNotEmpty) {
+            return raw == wanted || raw.contains(wanted);
+          }
+          return true; // if schema lacks type, don't exclude
+        }).toList();
+      }
       // Map to UI shape
       final mapped = await Future.wait(results.map((doc) async {
         final filePath = doc['file_path'] as String?;
@@ -178,12 +199,14 @@ class MedicalRecordsService {
         if (filePath != null && filePath.isNotEmpty) {
           url = await getFileDownloadUrl(filePath);
         }
+        final dateString = (doc['date_of_document'] as String?) ?? (doc['created_at'] as String);
         return {
           'id': doc['id'] as String,
           'title': doc['title'] as String,
           'description': doc['description'],
           'type': _mapDocumentTypeToUi(doc['document_type'] as String),
-          'date': (doc['date_of_document'] as String?) ?? (doc['created_at'] as String),
+          'rawType': (doc['document_type'] as String?)?.toLowerCase(),
+          'date': dateString,
           'provider': doc['healthcare_provider'],
           'tags': (doc['tags'] as List?)?.cast<String>() ?? <String>[],
           'isFavorite': (doc['is_favorite'] as bool?) ?? false,
@@ -194,28 +217,61 @@ class MedicalRecordsService {
       // Apply optional filters locally
       List<Map<String, dynamic>> documents = mapped;
       if (category != null) {
-        documents = documents.where((doc) =>
-            _mapUiTypeToCategoryId(doc['type'] as String) == category
-        ).toList();
+        final wanted = category.toLowerCase();
+        final expectedUi = _categoryIdToUiType(wanted);
+        final beforeCount = documents.length;
+        documents = documents.where((doc) {
+          final uiType = (doc['type'] as String?)?.toLowerCase() ?? '';
+          final raw = ((doc['rawType'] as String?) ?? '').toLowerCase();
+          return raw == wanted || uiType == expectedUi;
+        }).toList();
+        if (documents.isEmpty && beforeCount > 0) {
+          // Fallback: partial contains match to be more permissive
+          documents = mapped.where((doc) {
+            final uiType = (doc['type'] as String?)?.toLowerCase() ?? '';
+            final raw = ((doc['rawType'] as String?) ?? '').toLowerCase();
+            return raw.contains(wanted) || uiType.contains(expectedUi);
+          }).toList();
+        }
       }
 
       if (fromDate != null) {
+        final start = DateTime(fromDate.year, fromDate.month, fromDate.day);
         documents = documents.where((doc) {
           final docDate = DateTime.parse(doc['date']);
-          return docDate.isAfter(fromDate) || docDate.isAtSameMomentAs(fromDate);
+          return !docDate.isBefore(start);
         }).toList();
       }
 
       if (toDate != null) {
+        final end = DateTime(toDate.year, toDate.month, toDate.day, 23, 59, 59, 999);
         documents = documents.where((doc) {
           final docDate = DateTime.parse(doc['date']);
-          return docDate.isBefore(toDate) || docDate.isAtSameMomentAs(toDate);
+          return !docDate.isAfter(end);
         }).toList();
       }
 
       return documents;
     } catch (error) {
       throw Exception('Failed to search documents: $error');
+    }
+  }
+
+  String _categoryIdToUiType(String id) {
+    switch (id) {
+      case 'medical_image':
+        return 'imaging';
+      case 'lab_report':
+        return 'lab report';
+      case 'prescription':
+        return 'prescription';
+      case 'insurance':
+        return 'insurance';
+      case 'vaccination':
+      case 'vaccination_record':
+        return 'vaccination';
+      default:
+        return id;
     }
   }
 
@@ -293,7 +349,7 @@ class MedicalRecordsService {
   stats['by_category'][category] = (stats['by_category'][category] ?? 0) + 1;
 
         // Count by month
-  final docDate = DateTime.parse((doc['date_of_document'] as String?) ?? (doc['created_at'] as String));
+  final docDate = DateTime.parse(((doc['date_of_document'] ?? doc['created_at']) as String));
         final monthKey = '${docDate.year}-${docDate.month.toString().padLeft(2, '0')}';
         stats['by_month'][monthKey] = (stats['by_month'][monthKey] ?? 0) + 1;
 

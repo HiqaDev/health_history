@@ -1,9 +1,12 @@
 import 'dart:io';
 import 'dart:typed_data';
 import '../services/supabase_service.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class DocumentService {
-  final _client = SupabaseService.instance.client;
+  final SupabaseClient _client;
+
+  DocumentService({SupabaseClient? client}) : _client = client ?? SupabaseService.instance.client;
 
   // Get all documents for user
   Future<List<Map<String, dynamic>>> getUserDocuments(String userId) async {
@@ -29,7 +32,7 @@ class DocumentService {
           .select()
           .eq('user_id', userId)
           .eq('document_type', documentType)
-          .order('date_of_document', ascending: false);
+          .order('created_at', ascending: false);
 
       return List<Map<String, dynamic>>.from(response);
     } catch (error) {
@@ -95,11 +98,29 @@ class DocumentService {
       final fileBytes = await file.readAsBytes();
 
       final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final storagePath = '$userId/$timestamp-$fileName';
+      final safeName = _sanitizeFileName(fileName);
+      final storagePath = '$userId/$timestamp-$safeName';
+      final contentType = _guessMimeType(safeName);
+
+      // Debug: log planned upload details for troubleshooting
+      // Note: prints only assist during development; remove or gate if too verbose
+      // ignore: avoid_print
+      print('[DocumentService] uploadDocument → bucket=medical-documents, path=' 
+          '$storagePath, contentType=$contentType, bytes=${fileBytes.length}');
 
       await _client.storage
           .from('medical-documents')
-          .uploadBinary(storagePath, fileBytes);
+          .uploadBinary(
+            storagePath,
+            fileBytes,
+            fileOptions: FileOptions(
+              upsert: true,
+              contentType: contentType,
+            ),
+          );
+
+      // Some platforms of supabase_dart ignore contentType in const; set via update if supported
+      // Fallback: ignore since most view paths use signed URL that infers type
 
       return storagePath;
     } catch (error) {
@@ -112,11 +133,25 @@ class DocumentService {
       String userId, Uint8List fileBytes, String fileName) async {
     try {
       final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final storagePath = '$userId/$timestamp-$fileName';
+      final safeName = _sanitizeFileName(fileName);
+      final storagePath = '$userId/$timestamp-$safeName';
+      final contentType = _guessMimeType(safeName);
+
+      // Debug: log planned upload details for troubleshooting
+      // ignore: avoid_print
+      print('[DocumentService] uploadDocumentFromBytes → bucket=medical-documents, path=' 
+          '$storagePath, contentType=$contentType, bytes=${fileBytes.length}');
 
       await _client.storage
           .from('medical-documents')
-          .uploadBinary(storagePath, fileBytes);
+          .uploadBinary(
+            storagePath,
+            fileBytes,
+            fileOptions: FileOptions(
+              upsert: true,
+              contentType: contentType,
+            ),
+          );
 
       return storagePath;
     } catch (error) {
@@ -337,5 +372,39 @@ class DocumentService {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
     final random = DateTime.now().millisecondsSinceEpoch;
     return List.generate(6, (index) => chars[random % chars.length]).join();
+  }
+
+  // Sanitize file name for storage paths
+  String _sanitizeFileName(String input) {
+    // Keep alphanumerics, dash, underscore, dot; replace spaces with '-'
+    final replaced = input.replaceAll(' ', '-');
+    final cleaned = replaced.replaceAll(RegExp(r'[^A-Za-z0-9\-_.]'), '');
+    // Avoid leading dots or empty names
+    final normalized = cleaned.isEmpty ? 'file' : cleaned;
+    return normalized;
+  }
+
+  String _guessMimeType(String fileName) {
+    final ext = fileName.split('.').last.toLowerCase();
+    switch (ext) {
+      case 'pdf':
+        return 'application/pdf';
+      case 'jpg':
+      case 'jpeg':
+        return 'image/jpeg';
+      case 'png':
+        return 'image/png';
+      case 'webp':
+        return 'image/webp';
+      case 'tif':
+      case 'tiff':
+        return 'image/tiff';
+      case 'doc':
+        return 'application/msword';
+      case 'docx':
+        return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      default:
+        return 'application/octet-stream';
+    }
   }
 }
