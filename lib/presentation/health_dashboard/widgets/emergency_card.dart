@@ -24,11 +24,16 @@ class _EmergencyCardState extends State<EmergencyCard> {
     _loadEmergencyData();
   }
 
+  void _safeSetState(VoidCallback fn) {
+    if (!mounted) return;
+    setState(fn);
+  }
+
   Future<void> _loadEmergencyData() async {
     try {
       if (!_authService.isAuthenticated) {
         // Show a graceful placeholder when not logged in
-        setState(() {
+        _safeSetState(() {
           emergencyInfo = {
             "bloodType": "Not specified",
             "allergies": ["None reported"],
@@ -112,7 +117,7 @@ class _EmergencyCardState extends State<EmergencyCard> {
         ...profileConditions,
       }.toList();
       
-      setState(() {
+      _safeSetState(() {
         // Build contacts list with fallback from profile if table is empty
         final List<Map<String, dynamic>> contactsList = emergencyContacts
             .map<Map<String, dynamic>>((contact) => {
@@ -152,7 +157,7 @@ class _EmergencyCardState extends State<EmergencyCard> {
         _isLoading = false;
       });
     } catch (e) {
-      setState(() {
+      _safeSetState(() {
         // Fallback to basic data if error
         emergencyInfo = {
           "bloodType": "Not specified",

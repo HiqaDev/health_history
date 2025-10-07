@@ -434,11 +434,12 @@ class _DocumentScannerState extends State<DocumentScanner>
         'file_name': fileName,
         'file_size': fileSizeBytes,
         'mime_type': mimeType,
-        'date_of_document': DateTime.now().toIso8601String(),
+  // Use backend-required date field in YYYY-MM-DD
+  'document_date': DateTime.now().toIso8601String().split('T').first,
         'source': source,
         'scan_mode': _scanMode,
         'status': 'active',
-        'tags': [_scanMode, source],
+  // Omit tags to avoid unknown column errors on minimal schema
       };
 
       // Save document record via robust uploader (handles missing columns)

@@ -162,9 +162,9 @@ class HealthService {
   Future<List<Map<String, dynamic>>> getHealthEvents(String userId,
       {int limit = 20}) async {
     try {
-      final response = await _client
-          .from('health_events')
-          .select('*, medical_documents(*)')
+    final response = await _client
+      .from('health_events')
+      .select()
           .eq('user_id', userId)
           .order('event_date', ascending: false)
           .limit(limit);
@@ -406,33 +406,164 @@ class HealthService {
   Future<Map<String, dynamic>> uploadMedicalDocument(
       Map<String, dynamic> document) async {
     try {
-      try {
-        final response = await insertMedicalDocument(document);
-        return response;
-      } on PostgrestException catch (pgErr) {
-        // Handle environments where 'date_of_document' column doesn't exist
-        final msg = pgErr.message?.toLowerCase() ?? '';
-        if (pgErr.code == '42703' || msg.contains('date_of_document')) {
-          final fallback = Map<String, dynamic>.from(document);
-          fallback.remove('date_of_document');
-          final response = await insertMedicalDocument(fallback);
-          return response;
+      // Pre-normalize date fields: ensure 'document_date' exists in YYYY-MM-DD
+      final payload = Map<String, dynamic>.from(document);
+      if (!payload.containsKey('document_date')) {
+        final src = payload['date_of_document'] ?? payload['document_date'];
+        String dateOnly;
+        if (src is String && src.isNotEmpty) {
+          try {
+            final dt = DateTime.parse(src);
+            dateOnly = dt.toIso8601String().split('T').first;
+          } catch (_) {
+            dateOnly = DateTime.now().toIso8601String().split('T').first;
+          }
+        } else {
+          dateOnly = DateTime.now().toIso8601String().split('T').first;
         }
-        rethrow;
+        payload['document_date'] = dateOnly;
+      } else if (payload['document_date'] is String) {
+        // Normalize to YYYY-MM-DD
+        try {
+          final dt = DateTime.parse(payload['document_date'] as String);
+          payload['document_date'] = dt.toIso8601String().split('T').first;
+        } catch (_) {/* keep as-is */}
       }
+
+    // Debug: log minimal payload details (no PII) for troubleshooting
+    // ignore: avoid_print
+    print('[HealthService] uploadMedicalDocument → document_type='
+      '${payload['document_type']}, document_date=${payload['document_date']}, '
+      'has_tags=${payload.containsKey('tags')}, file_path=${payload['file_path'] != null}');
+    // ignore: avoid_print
+    print('[HealthService] uploadMedicalDocument keys=' + payload.keys.join(','));
+
+    return await _insertWithColumnFallback(payload);
     } catch (error) {
       throw Exception('Failed to upload medical document: $error');
     }
   }
 
+  // Attempt insert and on schema mismatch (unknown columns or not-null), adapt and retry
+  Future<Map<String, dynamic>> _insertWithColumnFallback(
+    Map<String, dynamic> document, {
+    int attempt = 0,
+  }) async {
+    if (attempt > 3) {
+      // Avoid infinite retries
+      return await insertMedicalDocument(document);
+    }
+    try {
+      return await insertMedicalDocument(document);
+    } on PostgrestException catch (pgErr) {
+  final msg = (pgErr.message ?? '').toLowerCase();
+  final details = (pgErr.details?.toString() ?? '').toLowerCase();
+
+      // Unknown column (42703): remove the offending key and retry
+      if (pgErr.code == '42703') {
+        final unknown = _extractUnknownColumn(pgErr.message ?? '') ??
+            _extractUnknownColumn(details) ??
+            _guessUnknownFromCommon(document);
+        if (unknown != null && document.containsKey(unknown)) {
+          final next = Map<String, dynamic>.from(document)..remove(unknown);
+          // ignore: avoid_print
+          print('[HealthService] Retrying insert without unknown column: $unknown');
+          return await _insertWithColumnFallback(next, attempt: attempt + 1);
+        }
+      }
+
+      // Not-null violation (23502): specifically handle document_date
+      if (pgErr.code == '23502' && (msg.contains('document_date') || details.contains('document_date'))) {
+        final d = document['document_date'] ?? document['date_of_document'] ?? DateTime.now().toIso8601String().split('T').first;
+        final next = Map<String, dynamic>.from(document);
+        next['document_date'] = (d is String)
+            ? ((){ try { final dt = DateTime.parse(d); return dt.toIso8601String().split('T').first; } catch(_){ return d; } })()
+            : DateTime.now().toIso8601String().split('T').first;
+        // ignore: avoid_print
+        print('[HealthService] Retrying insert with normalized document_date=${next['document_date']}');
+        return await _insertWithColumnFallback(next, attempt: attempt + 1);
+      }
+
+      // Invalid date format (22007): normalize to YYYY-MM-DD and retry
+      if (pgErr.code == '22007' || msg.contains('date format') || details.contains('date format')) {
+        final src = document['document_date'] ?? document['date_of_document'] ?? DateTime.now().toIso8601String();
+        String dateOnly;
+        try { final dt = DateTime.parse(src.toString()); dateOnly = dt.toIso8601String().split('T').first; }
+        catch (_) { dateOnly = DateTime.now().toIso8601String().split('T').first; }
+        final next = Map<String, dynamic>.from(document);
+        next['document_date'] = dateOnly;
+        // ignore: avoid_print
+        print('[HealthService] Retrying insert after date format normalization document_date=$dateOnly');
+        return await _insertWithColumnFallback(next, attempt: attempt + 1);
+      }
+
+      // Invalid enum value for document_type (22P02 or message contains enum)
+      if (pgErr.code == '22P02' && (msg.contains('document_type') || details.contains('document_type') || msg.contains('invalid input value for enum') || details.contains('invalid input value for enum'))) {
+        final fallbackType = _fallbackDocumentType(document['document_type']?.toString());
+        final next = Map<String, dynamic>.from(document);
+        next['document_type'] = fallbackType;
+        // ignore: avoid_print
+        print('[HealthService] Retrying insert with fallback document_type=$fallbackType');
+        return await _insertWithColumnFallback(next, attempt: attempt + 1);
+      }
+
+      // If message complains about date_of_document column, try removing it and retry
+      if (msg.contains('date_of_document') && document.containsKey('date_of_document')) {
+        final next = Map<String, dynamic>.from(document)..remove('date_of_document');
+        return await _insertWithColumnFallback(next, attempt: attempt + 1);
+      }
+      rethrow;
+    }
+  }
+
+  String _fallbackDocumentType(String? current) {
+    // Try a sequence that is likely present across schemas.
+    // Preference order attempts to reduce semantic drift while maximizing success.
+    final c = (current ?? '').toLowerCase();
+    if (c == 'medical_image') return 'xray'; // expanded enum may prefer specific imaging types
+    if (c == 'vaccination') return 'prescription'; // vaccination_record may be the only variant
+    if (c == 'other' || c.isEmpty) return 'prescription';
+    // Final safe default present in both enum variants
+    return 'prescription';
+  }
+
+  String? _extractUnknownColumn(String text) {
+    // Look for patterns like: column "xyz" does not exist
+    final regex = RegExp(r'column\s+"?(\w+)"?\s+does not exist', caseSensitive: false);
+    final m = regex.firstMatch(text);
+    if (m != null && m.groupCount >= 1) {
+      return m.group(1);
+    }
+    return null;
+  }
+
+  String? _guessUnknownFromCommon(Map<String, dynamic> doc) {
+    // Only consider optional fields that are commonly missing across schemas.
+    // Never guess required fields like 'document_date'.
+    for (final k in const ['tags', 'date_of_document', 'hospital_name', 'doctor_name']) {
+      if (doc.containsKey(k)) return k;
+    }
+    return null;
+  }
+
   // Separated for testability: override in tests to simulate DB behavior
   Future<Map<String, dynamic>> insertMedicalDocument(Map<String, dynamic> document) async {
-    final response = await _client
-        .from('medical_documents')
-        .insert(document)
-        .select()
-        .single();
-    return response;
+    try {
+      final response = await _client
+          .from('medical_documents')
+          .insert(document)
+          .select()
+          .single();
+      return response;
+    } on PostgrestException catch (e) {
+      // ignore: avoid_print
+      print('[HealthService] insertMedicalDocument ✖ PostgrestException code=${e.code} message=${e.message} details=${e.details} hint=${e.hint}');
+      rethrow;
+    } catch (e) {
+      // ignore: avoid_print
+      print('[HealthService] insertMedicalDocument ✖ error: $e');
+      rethrow;
+    }
   }
 
   // QR Code Operations

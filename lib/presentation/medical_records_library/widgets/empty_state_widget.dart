@@ -192,14 +192,14 @@ class EmptyStateWidget extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        step['title'] as String,
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
+                        Text(
+                          step['title'] as String,
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        overflow: TextOverflow.ellipsis,
-                        maxLines: 1,
-                      ),
                       SizedBox(height: 0.5.h),
                       Text(
                         step['description'] as String,

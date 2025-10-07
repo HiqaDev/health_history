@@ -55,8 +55,8 @@ class MedicalRecordsService {
         'file_name': fileName,
         'file_size': fileSize,
         'mime_type': mimeType,
-        'tags': tags,
-        'date_of_document': documentDate.toIso8601String().split('T')[0],
+        // 'tags' omitted to avoid unknown column on minimal schema
+        'document_date': documentDate.toIso8601String().split('T')[0],
         'healthcare_provider': hospitalName ?? doctorName,
       };
 
@@ -111,7 +111,9 @@ class MedicalRecordsService {
         if (filePath != null && filePath.isNotEmpty) {
           url = await getFileDownloadUrl(filePath);
         }
-        final dateString = (doc['date_of_document'] as String?) ?? (doc['created_at'] as String);
+    final dateString = (doc['date_of_document'] as String?)
+      ?? (doc['document_date'] as String?)
+      ?? (doc['created_at'] as String);
         return {
           'id': doc['id'] as String,
           'title': doc['title'] as String,
@@ -199,7 +201,9 @@ class MedicalRecordsService {
         if (filePath != null && filePath.isNotEmpty) {
           url = await getFileDownloadUrl(filePath);
         }
-        final dateString = (doc['date_of_document'] as String?) ?? (doc['created_at'] as String);
+    final dateString = (doc['date_of_document'] as String?)
+      ?? (doc['document_date'] as String?)
+      ?? (doc['created_at'] as String);
         return {
           'id': doc['id'] as String,
           'title': doc['title'] as String,
@@ -348,8 +352,11 @@ class MedicalRecordsService {
   final category = _mapDocumentTypeToUi(doc['document_type'] as String);
   stats['by_category'][category] = (stats['by_category'][category] ?? 0) + 1;
 
-        // Count by month
-  final docDate = DateTime.parse(((doc['date_of_document'] ?? doc['created_at']) as String));
+    // Count by month
+    final dateStr = (doc['date_of_document'] as String?)
+      ?? (doc['document_date'] as String?)
+      ?? (doc['created_at'] as String);
+    final docDate = DateTime.parse(dateStr);
         final monthKey = '${docDate.year}-${docDate.month.toString().padLeft(2, '0')}';
         stats['by_month'][monthKey] = (stats['by_month'][monthKey] ?? 0) + 1;
 
@@ -361,8 +368,8 @@ class MedicalRecordsService {
         // Count critical documents
         // No critical flag in base schema; skip
 
-        // Count recent uploads
-  final createdAt = DateTime.parse(doc['created_at']);
+    // Count recent uploads
+    final createdAt = DateTime.parse(doc['created_at']);
         if (createdAt.isAfter(thirtyDaysAgo)) {
           stats['recent_uploads']++;
         }

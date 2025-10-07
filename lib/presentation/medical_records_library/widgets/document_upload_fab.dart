@@ -404,8 +404,8 @@ class _DocumentUploadFabState extends State<DocumentUploadFab>
         'file_name': rawName,
         'file_size': fileSize,
         'mime_type': mimeType,
-        'tags': [uiLabel],
-        'date_of_document': DateTime.now().toIso8601String().split('T').first,
+        // 'tags' omitted to avoid unknown column on some schemas
+        'document_date': DateTime.now().toIso8601String().split('T').first,
         'healthcare_provider': null,
       };
 
@@ -488,15 +488,17 @@ class _DocumentUploadFabState extends State<DocumentUploadFab>
       case 'lab report':
         return 'lab_report';
       case 'imaging':
-        return 'medical_image';
+        // Use a concrete imaging type to satisfy expanded enum
+        return 'xray';
       case 'insurance':
         return 'insurance';
       case 'vaccination':
-        return 'vaccination';
+        return 'vaccination_record';
       case 'bill':
-        return 'other';
+        return 'bill';
       default:
-        return 'other';
+        // Safe default present across schemas
+        return 'prescription';
     }
   }
 

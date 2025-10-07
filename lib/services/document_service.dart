@@ -119,11 +119,16 @@ class DocumentService {
             ),
           );
 
+      // ignore: avoid_print
+      print('[DocumentService] uploadDocument ✔ success path=$storagePath');
+
       // Some platforms of supabase_dart ignore contentType in const; set via update if supported
       // Fallback: ignore since most view paths use signed URL that infers type
 
       return storagePath;
     } catch (error) {
+      // ignore: avoid_print
+      print('[DocumentService] uploadDocument ✖ error: $error');
       throw Exception('Failed to upload document: $error');
     }
   }
@@ -153,8 +158,13 @@ class DocumentService {
             ),
           );
 
+      // ignore: avoid_print
+      print('[DocumentService] uploadDocumentFromBytes ✔ success path=$storagePath');
+
       return storagePath;
     } catch (error) {
+      // ignore: avoid_print
+      print('[DocumentService] uploadDocumentFromBytes ✖ error: $error');
       throw Exception('Failed to upload document: $error');
     }
   }
